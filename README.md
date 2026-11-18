@@ -67,6 +67,23 @@ Which LICENSE are we using?
 Is the LICENSE(.md) file present?  
 Does it have the correct dates, legal entities etc.?
 
+## Development
+
+JavaScript packages live in an npm workspace (`packages/*`, `tools/*`); Node 24 (see `.node-version`).
+
+```sh
+npm ci
+npm run typecheck --workspaces --if-present
+npm run lint --workspaces --if-present
+npm run test --workspaces --if-present
+npm run build --workspaces --if-present
+npx playwright install --with-deps chromium   # once
+npm run e2e --workspaces --if-present
+features/check_scenarios.sh                    # prints nothing when every scenario has a test
+```
+
+Every `Scenario:` title in `features/<name>/*.feature` must appear as a quoted test title under `packages/<name>` or `tools/<name>`.
+
 ## Maintainers
 
 Who created this?  

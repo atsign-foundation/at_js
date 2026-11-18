@@ -2,7 +2,7 @@ name: ci
 
 on:
   push:
-    branches: [trunk]
+    branches: [trunk, 'st/**']
   pull_request:
   workflow_dispatch:
 
@@ -11,7 +11,7 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref != 'refs/heads/trunk') }}
 
 jobs:
   check:

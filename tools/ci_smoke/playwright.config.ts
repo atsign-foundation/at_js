@@ -1,6 +1,7 @@
 import { defineConfig } from '@playwright/test';
+import { e2ePort } from './src/port.js';
 
-const port = Number(process.env.E2E_PORT ?? 4174);
+const port = e2ePort();
 
 export default defineConfig({
   testDir: 'e2e',

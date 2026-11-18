@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
+import { e2ePort } from '../src/port.js';
 
-const port = Number(process.env.E2E_PORT ?? 4174);
+const port = e2ePort();
 
 async function isSecureContext(host: string, page: import('@playwright/test').Page): Promise<boolean> {
   await page.goto(`http://${host}:${port}/`);

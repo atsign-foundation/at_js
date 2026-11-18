@@ -4,9 +4,10 @@ import { createServer } from 'node:http';
 import { dirname, extname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveFile } from './resolve.js';
+import { e2ePort } from './port.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const port = Number(process.env.E2E_PORT ?? 4174);
+const port = e2ePort();
 const types: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',

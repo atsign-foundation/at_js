@@ -21,3 +21,28 @@ Feature: CI browser canary
     Given the static server root
     When a request path climbs out with dot-dot segments, plain or percent-encoded
     Then the server resolves no file for it
+
+  Scenario: a malformed request target gets 400
+    Given the static server root
+    When a request target is not a well-formed URL
+    Then the server answers 400 with no body
+
+  Scenario: a well-formed request target is answered from the served trees
+    Given the static server root
+    When a request target is well formed
+    Then the server answers 200 for a served file and 404 for any other path
+
+  Scenario: a file that cannot be opened gets 500
+    Given a served file that is removed before it is opened
+    When the server sends it
+    Then the server answers 500
+
+  Scenario: a file that fails while streaming ends the response early
+    Given a served path that cannot be read to the end
+    When the server sends it
+    Then the response is closed without a complete body
+
+  Scenario: a readable file is streamed with 200
+    Given a served file that can be read
+    When the server sends it
+    Then the server answers 200 with the file

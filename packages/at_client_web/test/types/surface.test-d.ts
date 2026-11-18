@@ -1,0 +1,57 @@
+// Compiled by `npm run typecheck` against dist/index.d.ts; it has no runtime.
+// It pins the exported surface so a signature change shows up here.
+import type * as impl from '../../dist/index.js';
+import { AtClient } from '../../dist/index.js';
+
+declare const client: impl.AtClient;
+
+export const create: (opts: impl.AtClientOptions) => Promise<impl.AtClient> = AtClient.create;
+export const status: impl.ConnectionStatus = client.status;
+export const off: () => void = client.onStatus((next: impl.ConnectionStatus) => void next);
+
+export const tasks: Promise<impl.Collection<{ n: number }>> = client.collection<{ n: number }>('tasks', {
+  type: 'task',
+  eventSource: 'both',
+});
+declare const collection: impl.Collection<{ n: number }>;
+export const created: Promise<impl.Item<{ n: number }>> = collection.create({ n: 1 }, { sharedWith: ['@b'] });
+export const fetched: Promise<impl.Item<{ n: number }> | null> = collection.get('id');
+export const listed: Promise<impl.Listing<{ n: number }>> = collection.list();
+export const queried: Promise<impl.Listing<{ n: number }>> = collection.query([{ path: 'n', op: '>=', value: 1 }]);
+export const updated: Promise<impl.Item<{ n: number }>> = collection.update('id', { n: 2 });
+export const shared: Promise<impl.Item<{ n: number }>> = collection.share('id', ['@b']);
+export const removed: Promise<void> = collection.remove('id');
+export const watched: AsyncIterable<impl.CollectionEvent<{ n: number }>> = collection.watch();
+
+// @ts-expect-error data must be an object
+void client.collection<string>('x', { type: 't' });
+
+export const notified: Promise<boolean> = client.notify({ key: 'k', sharedWith: '@b' }, 'v');
+export const events: AsyncIterable<impl.AtEvent> = client.subscribe('regex');
+export const closed: Promise<void> = client.close();
+
+export const otp: Promise<string> = client.otp();
+export const pending: Promise<impl.PendingEnrollment[]> = client.pendingEnrollments();
+export const approved: Promise<void> = client.approve('id');
+export const denied: Promise<void> = client.deny('id');
+
+export const errorOut: Error & { code: string } = {} as impl.AtError;
+export const code: impl.AtErrorCode = 'bad_key';
+
+// The flat data plane and the passkey entry points are not part of the surface.
+// @ts-expect-error no get
+void client.get;
+// @ts-expect-error no put
+void client.put;
+// @ts-expect-error no delete
+void client.delete;
+// @ts-expect-error no keys
+void client.keys;
+// @ts-expect-error no retry
+void client.retry;
+// @ts-expect-error no passkey onboarding
+void AtClient.onboard;
+// @ts-expect-error no passkey enrollment
+void AtClient.enroll;
+// @ts-expect-error no prf probe
+void AtClient.prfSupported;

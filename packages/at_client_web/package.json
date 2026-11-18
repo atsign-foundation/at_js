@@ -1,0 +1,51 @@
+{
+  "name": "@atsign/at_client_web",
+  "version": "0.1.0-alpha.1",
+  "description": "Alpha: atPlatform client for browsers, with keys-file sessions and collections. The API may change.",
+  "license": "BSD-3-Clause",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/atsign-foundation/at_js.git",
+    "directory": "packages/at_client_web"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.build.json && tsc -p test/types/tsconfig.json",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && node scripts/copy-bundle.mjs",
+    "ci:prepare": "node scripts/fetch-bridge.mjs",
+    "e2e": "playwright test",
+    "pack:check": "npm pack --dry-run",
+    "docs:api": "typedoc"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.0",
+    "@types/node": "26.6.6",
+    "typedoc": "0.28.20",
+    "typedoc-plugin-markdown": "4.14.1",
+    "typescript": "5.9.3",
+    "vitest": "5.1.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "tag": "alpha"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

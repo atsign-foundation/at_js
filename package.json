@@ -1,0 +1,11 @@
+{
+  "name": "at_js",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "tools/*"
+  ],
+  "engines": {
+    "node": ">=24"
+  }
+}

@@ -82,6 +82,8 @@ npm run e2e --workspaces --if-present
 features/check_scenarios.sh                    # prints nothing when every scenario has a test
 ```
 
+The browser tests serve on port 4174; set `E2E_PORT` (1-65535) to override it.
+
 Every `Scenario:` title in `features/<name>/*.feature` must appear as a quoted test title under `packages/<name>` or `tools/<name>`.
 
 ## Maintainers

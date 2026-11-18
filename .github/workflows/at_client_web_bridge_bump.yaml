@@ -1,0 +1,76 @@
+name: at_client_web bridge bump
+
+# Looks for a newer bridge release in atsign-foundation/at_client_sdk and opens a
+# pull request that moves the pin in packages/at_client_web/bridge.ref. CI on that
+# branch runs the real bundle download, checksum and attestation check.
+on:
+  schedule:
+    - cron: '17 5 * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+env:
+  BRIDGE_REPO: atsign-foundation/at_client_sdk
+
+jobs:
+  bump:
+    if: github.ref == 'refs/heads/trunk'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Find newer bridge release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          current="$(jq -r .tag packages/at_client_web/bridge.ref)"
+          tag="$(gh release list --repo "$BRIDGE_REPO" --exclude-drafts --limit 100 --json tagName,createdAt \
+            --jq 'map(select(.tagName | test("^at_client_web-bridge-[0-9a-f]{12}$"))) | sort_by(.createdAt) | last | .tagName // empty')"
+          echo "newest: ${tag:-none}; pinned: $current"
+          if [[ -z "$tag" || "$tag" == "$current" ]]; then exit 0; fi
+          [[ "$tag" =~ ^at_client_web-bridge-[0-9a-f]{12}$ ]] || { echo "unexpected tag: '$tag'" >&2; exit 1; }
+          dir="$(mktemp -d)"
+          gh release download "$tag" --repo "$BRIDGE_REPO" --pattern at_client_web.js.sha256 --dir "$dir"
+          sha="$(cut -d' ' -f1 "$dir/at_client_web.js.sha256")"
+          [[ "$sha" =~ ^[0-9a-f]{64}$ ]] || { echo "unexpected sha256: '$sha'" >&2; exit 1; }
+          # Written only after both regex checks above; the next step trusts this file.
+          printf '{\n  "tag": "%s",\n  "sha256": "%s"\n}\n' "$tag" "$sha" > "$RUNNER_TEMP/next-bridge.ref"
+      - name: Open bump pull request
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BASE_SHA: ${{ github.sha }}
+        run: |
+          [[ -f "$RUNNER_TEMP/next-bridge.ref" ]] || exit 0
+          tag="$(jq -r .tag "$RUNNER_TEMP/next-bridge.ref")"
+          branch="bot/bridge-$tag"
+          path=packages/at_client_web/bridge.ref
+          # Any probe failure counts as "absent": the ref create below fails loudly if the branch exists.
+          if gh api "repos/$REPO/git/ref/heads/$branch" --silent 2>/dev/null; then echo "$branch already exists"; exit 0; fi
+          gh api "repos/$REPO/git/refs" --silent -f ref="refs/heads/$branch" -f sha="$BASE_SHA"
+          # Until the PR exists, a failure deletes the branch so the next run retries (best effort: the step is already failing).
+          trap 'gh api -X DELETE "repos/$REPO/git/refs/heads/$branch" --silent || true' EXIT
+          file_sha="$(gh api "repos/$REPO/contents/$path?ref=$branch" --jq .sha)"
+          gh api -X PUT "repos/$REPO/contents/$path" --silent \
+            -f message="chore(at_client_web): pin bridge $tag" \
+            -f content="$(base64 -w0 "$RUNNER_TEMP/next-bridge.ref")" \
+            -f sha="$file_sha" -f branch="$branch"
+          gh pr create --repo "$REPO" --base trunk --head "$branch" \
+            --title "chore(at_client_web): pin bridge $tag" \
+            --body "Pins the bridge release \`$tag\` in \`$path\`. CI is dispatched on this branch and checks the bundle's checksum and build attestation."
+          trap - EXIT
+          # Events made with GITHUB_TOKEN don't trigger workflows, so start CI on the bump branch explicitly.
+          gh workflow run ci.yaml --repo "$REPO" --ref "$branch"

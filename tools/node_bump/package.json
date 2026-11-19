@@ -1,0 +1,20 @@
+{
+  "name": "@atsign-internal/node_bump",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Picks the newest same-major Node patch past the cooldown for the weekly .node-version bump. Never published.",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "typescript": "5.9.3",
+    "vitest": "5.1.0"
+  },
+  "engines": {
+    "node": ">=26"
+  }
+}

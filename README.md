@@ -69,7 +69,7 @@ Does it have the correct dates, legal entities etc.?
 
 ## Development
 
-JavaScript packages live in an npm workspace (`packages/*`, `tools/*`); Node 24 (see `.node-version`).
+JavaScript packages live in an npm workspace (`packages/*`, `tools/*`); Node 26 LTS (see `.node-version`).
 
 ```sh
 npm ci

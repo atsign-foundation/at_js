@@ -53,3 +53,23 @@ Feature: Weekly Node patch bump
     Given a release index with a newer eligible patch of the pinned major
     When the bump tool runs
     Then it prints that version on stdout and exits 0
+
+  Scenario: an existing bump branch skips the run
+    Given the branch bot/node-VERSION already exists
+    When the bump script runs
+    Then it exits 0 and makes no writes
+
+  Scenario: a failed bump write deletes the bump branch
+    Given the branch did not exist and was created
+    When the contents write or the pull request creation fails
+    Then the script exits non-zero and deletes the bot/node-VERSION ref
+
+  Scenario: a new patch opens a bump PR and starts CI
+    Given a valid VERSION and no bump branch
+    When the bump script runs
+    Then it creates the ref from BASE_SHA, writes .node-version as VERSION and a newline, opens a pull request against trunk from bot/node-VERSION, dispatches ci.yaml on that ref, and leaves the branch in place
+
+  Scenario: an invalid version is refused before any write
+    Given VERSION is not MAJOR.MINOR.PATCH
+    When the bump script runs
+    Then it exits non-zero and calls gh not at all

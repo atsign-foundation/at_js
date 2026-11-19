@@ -1,0 +1,23 @@
+{
+  "name": "@atsign-internal/ci_smoke",
+  "version": "0.0.0",
+  "private": true,
+  "description": "CI canary: proves the workspace pipeline and Chromium secure-context setup. Never published.",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.0",
+    "@types/node": "26.6.6",
+    "typescript": "5.9.3",
+    "vitest": "5.1.0"
+  },
+  "engines": {
+    "node": ">=26"
+  }
+}

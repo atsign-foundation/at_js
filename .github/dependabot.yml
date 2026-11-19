@@ -11,3 +11,15 @@ updates:
       github-actions:
         patterns:
           - "*"
+
+  # Maintain npm dependencies for the workspace root lockfile
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    cooldown:
+      default-days: 7
+    groups:
+      npm:
+        patterns:
+          - "*"

@@ -67,6 +67,27 @@ Which LICENSE are we using?
 Is the LICENSE(.md) file present?  
 Does it have the correct dates, legal entities etc.?
 
+## Development
+
+JavaScript packages live in an npm workspace (`packages/*`, `tools/*`); Node 26 LTS (see `.node-version`).
+
+```sh
+npm ci
+npm run typecheck --workspaces --if-present
+npm run lint --workspaces --if-present
+npm run test --workspaces --if-present
+npm run build --workspaces --if-present
+npx playwright install --with-deps chromium   # once
+npm run e2e --workspaces --if-present
+features/check_scenarios.sh                    # prints nothing when every scenario has a test
+```
+
+A weekly job (`.github/workflows/node-bump.yaml`, a short shell script inline in the workflow) opens a PR that moves `.node-version` to the newest patch of the same Node major once it is at least 7 full days old (a release counts from the end of its listed UTC day); it never crosses a major.
+
+The browser tests serve on port 4174; set `E2E_PORT` (1-65535) to override it.
+
+Every `Scenario:` title in `features/<name>/*.feature` must appear as a quoted test title under `packages/<name>` or `tools/<name>`.
+
 ## Maintainers
 
 Who created this?  

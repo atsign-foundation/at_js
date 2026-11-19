@@ -1,0 +1,69 @@
+name: node-bump
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    if: github.ref == 'refs/heads/trunk'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Find newer patch
+        shell: bash
+        run: |
+          current="$(< .node-version)"
+          [[ "$current" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "bad .node-version: '$current'" >&2; exit 1; }
+          # A release counts from the end of its UTC day, so "7 full days old" means dated before today minus 7 days.
+          cutoff="$(date -u -d '7 days ago' +%F)"
+          latest="$(curl -fsS --max-time 30 https://nodejs.org/dist/index.json \
+            | jq -r --arg p "v${current%%.*}." --arg c "$cutoff" \
+                '.[] | select((.version | startswith($p)) and .date < $c) | .version | ltrimstr("v")' \
+            | sort -V | tail -n 1)"
+          [[ "$latest" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "unexpected index version: '$latest'" >&2; exit 1; }
+          if [[ "$latest" == "$current" || "$(printf '%s\n' "$current" "$latest" | sort -V | tail -n 1)" == "$current" ]]; then
+            echo "Node $current is up to date"; exit 0
+          fi
+          # Written only after the regex check above; the next step trusts this file.
+          printf '%s' "$latest" > "$RUNNER_TEMP/next-node-version"
+      - name: Open bump pull request
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BASE_SHA: ${{ github.sha }}
+        run: |
+          [[ -f "$RUNNER_TEMP/next-node-version" ]] || exit 0
+          version="$(< "$RUNNER_TEMP/next-node-version")"
+          branch="bot/node-$version"
+          # Any probe failure counts as "absent": the ref create below fails loudly if the branch exists.
+          if gh api "repos/$REPO/git/ref/heads/$branch" --silent 2>/dev/null; then echo "$branch already exists"; exit 0; fi
+          gh api "repos/$REPO/git/refs" --silent -f ref="refs/heads/$branch" -f sha="$BASE_SHA"
+          # Until the PR exists, a failure deletes the branch so the next run retries (best effort: the step is already failing).
+          trap 'gh api -X DELETE "repos/$REPO/git/refs/heads/$branch" --silent || true' EXIT
+          file_sha="$(gh api "repos/$REPO/contents/.node-version?ref=$branch" --jq .sha)"
+          gh api -X PUT "repos/$REPO/contents/.node-version" --silent \
+            -f message="ci: bump Node to $version" \
+            -f content="$(printf '%s\n' "$version" | base64 -w0)" \
+            -f sha="$file_sha" -f branch="$branch"
+          gh pr create --repo "$REPO" --base trunk --head "$branch" \
+            --title "ci: bump Node to $version" \
+            --body "Weekly bump to Node $version, the newest patch of this major past the cooldown."
+          trap - EXIT
+          # Events made with GITHUB_TOKEN don't trigger workflows, so start CI on the bump branch explicitly.
+          gh workflow run ci.yaml --repo "$REPO" --ref "$branch"

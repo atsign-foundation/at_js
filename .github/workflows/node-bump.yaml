@@ -1,0 +1,64 @@
+name: node-bump
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    if: github.ref == 'refs/heads/trunk'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+      - name: Find newer patch
+        id: next
+        run: |
+          version="$(node tools/node_bump/src/main.ts)"
+          if [ -n "$version" ] && ! printf '%s\n' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "unexpected version output" >&2
+            exit 1
+          fi
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+      - name: Open bump pull request
+        if: steps.next.outputs.version != ''
+        run: |
+          branch="bot/node-${VERSION}"
+          if gh api "repos/${REPO}/git/ref/heads/${branch}" --silent 2>/dev/null; then
+            echo "${branch} already exists; nothing to do"
+            exit 0
+          fi
+          gh api "repos/${REPO}/git/refs" --silent \
+            -f ref="refs/heads/${branch}" -f sha="${BASE_SHA}"
+          file_sha="$(gh api "repos/${REPO}/contents/.node-version?ref=${branch}" --jq .sha)"
+          content="$(printf '%s\n' "${VERSION}" | base64 | tr -d '\n')"
+          gh api -X PUT "repos/${REPO}/contents/.node-version" --silent \
+            -f message="ci: bump Node to ${VERSION}" \
+            -f content="${content}" \
+            -f sha="${file_sha}" \
+            -f branch="${branch}"
+          gh pr create --repo "${REPO}" --base trunk --head "${branch}" \
+            --title "ci: bump Node to ${VERSION}" \
+            --body "Weekly bump of the pinned Node patch to ${VERSION}, the newest release of the current major that is at least 7 days old."
+          gh workflow run ci.yaml --repo "${REPO}" --ref "${branch}"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BASE_SHA: ${{ github.sha }}
+          VERSION: ${{ steps.next.outputs.version }}

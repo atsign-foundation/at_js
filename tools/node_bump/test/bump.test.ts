@@ -40,11 +40,13 @@ describe('nextNodeVersion', () => {
     expect(nextNodeVersion('26.13.1', index, NOW)).toBe('26.13.2');
     const bad = [
       { version: 'v26.13.9x', date: '2026-10-01' },
-      { version: '26.13.9', date: '2026-10-01' },
+      { version: 'v26.13.9-rc.1', date: '2026-10-01' },
       { version: 'v26.13.9', date: 'yesterday' },
       { version: 26, date: '2026-10-01' },
       null,
     ];
+    // other majors' odd tags do not matter
+    expect(nextNodeVersion('26.13.1', [...index, { version: 'v27.0.0-alpha.0.1', date: '2026-10-01' }], NOW)).toBe('26.13.2');
     for (const entry of bad) {
       expect(() => nextNodeVersion('26.13.1', [...index, entry], NOW)).toThrow();
     }

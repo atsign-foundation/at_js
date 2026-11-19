@@ -82,6 +82,8 @@ npm run e2e --workspaces --if-present
 features/check_scenarios.sh                    # prints nothing when every scenario has a test
 ```
 
+A weekly job (`.github/workflows/node-bump.yaml`) opens a PR that moves `.node-version` to the newest patch of the same Node major once it is 7 days old; it never crosses a major.
+
 The browser tests serve on port 4174; set `E2E_PORT` (1-65535) to override it.
 
 Every `Scenario:` title in `features/<name>/*.feature` must appear as a quoted test title under `packages/<name>` or `tools/<name>`.

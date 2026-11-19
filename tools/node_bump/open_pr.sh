@@ -7,6 +7,7 @@ set -euo pipefail
 [[ "${VERSION:-}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "invalid VERSION" >&2; exit 1; }
 
 branch="bot/node-${VERSION}"
+# Any probe failure (not just 404) counts as "absent" on purpose: the ref create below fails loudly if the branch exists or the API is unreachable.
 if gh api "repos/${REPO}/git/ref/heads/${branch}" --silent 2>/dev/null; then
   echo "${branch} already exists; nothing to do"
   exit 0
@@ -14,6 +15,7 @@ fi
 gh api "repos/${REPO}/git/refs" --silent \
   -f ref="refs/heads/${branch}" -f sha="${BASE_SHA}"
 # A failure before the PR exists must not leave a PR-less branch that blocks later runs.
+# Best-effort cleanup (hence `|| true`): the script is already exiting non-zero, and if the delete fails the next run's probe finds the leftover branch and a human deletes it.
 trap 'gh api -X DELETE "repos/${REPO}/git/refs/heads/${branch}" --silent || true' EXIT
 file_sha="$(gh api "repos/${REPO}/contents/.node-version?ref=${branch}" --jq .sha)"
 content="$(printf '%s\n' "${VERSION}" | base64 | tr -d '\n')"

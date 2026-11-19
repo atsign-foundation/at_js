@@ -29,12 +29,10 @@ jobs:
           node-version-file: .node-version
       - name: Find newer patch
         id: next
+        shell: bash
         run: |
           version="$(node tools/node_bump/src/main.ts)"
-          if [ -n "$version" ] && ! printf '%s\n' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "unexpected version output" >&2
-            exit 1
-          fi
+          [[ -z "$version" || "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "unexpected version output" >&2; exit 1; }
           printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
       - name: Open bump pull request
         if: steps.next.outputs.version != ''

@@ -23,7 +23,8 @@ function parseEntry(entry: unknown, major: number): { version: Triple; releasedA
   const { version, date } = entry as Record<string, unknown>;
   if (typeof version === 'string' && !version.startsWith(`v${major}.`)) return undefined;
   const match = typeof version === 'string' ? RELEASE.exec(version) : null;
-  const releasedAt = typeof date === 'string' && DATE.test(date) ? Date.parse(`${date}T00:00:00Z`) : NaN;
+  // The index date is a day: the release counts as out at the end of that day.
+  const releasedAt = typeof date === 'string' && DATE.test(date) ? Date.parse(`${date}T00:00:00Z`) + DAY_MS : NaN;
   if (match === null || Number.isNaN(releasedAt)) {
     throw new Error(`malformed index entry: ${JSON.stringify(entry)}`);
   }

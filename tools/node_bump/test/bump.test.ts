@@ -23,7 +23,14 @@ describe('nextNodeVersion', () => {
 
   it('a release younger than 7 days is ignored', () => {
     expect(nextNodeVersion('26.13.1', index, NOW)).toBe('26.13.2');
-    expect(nextNodeVersion('26.13.1', index, new Date('2026-11-24T00:00:00Z'))).toBe('26.14.0');
+    expect(nextNodeVersion('26.13.1', index, new Date('2026-11-25T00:00:00Z'))).toBe('26.14.0');
+  });
+
+  it('a release counts as released at the end of its day', () => {
+    const now = new Date('2026-11-19T12:00:00Z');
+    const pick = (date: string) => nextNodeVersion('26.13.1', [{ version: 'v26.13.2', date }, { version: 'v26.13.1', date: '2026-01-01' }], now);
+    expect(pick('2026-11-12')).toBeNull();
+    expect(pick('2026-11-11')).toBe('26.13.2');
   });
 
   it('nothing is output when the pin is already the newest eligible patch', () => {

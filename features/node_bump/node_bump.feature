@@ -33,7 +33,23 @@ Feature: Weekly Node patch bump
     When the bump is computed
     Then it fails and nothing is written
 
-  Scenario: a fetch or JSON error fails the run
-    Given the release index cannot be fetched or is not valid JSON
+  Scenario: a release counts as released at the end of its day
+    Given a release dated D
+    When the bump is computed at noon UTC on D+7
+    Then the release is not yet eligible
+    And at noon UTC on D+8 it is eligible
+
+  Scenario: a fetch error fails the run
+    Given the release index cannot be fetched or answers with an HTTP error
     When the bump tool runs
     Then it exits non-zero with a diagnostic on stderr and prints nothing on stdout
+
+  Scenario: an invalid JSON index fails the run
+    Given the release index answers with a body that is not valid JSON
+    When the bump tool runs
+    Then it exits non-zero with a diagnostic on stderr and prints nothing on stdout
+
+  Scenario: the tool prints the new version
+    Given a release index with a newer eligible patch of the pinned major
+    When the bump tool runs
+    Then it prints that version on stdout and exits 0

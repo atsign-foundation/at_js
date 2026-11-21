@@ -29,8 +29,14 @@ export function toBridgeKey(key: AtKey, namespace: string): BridgeKey {
  * The `AtKey` a key string names: `[cached:][public:|@with:]key.namespace[@by]`.
  * The namespace is [namespace] when the key ends in it, else the last
  * dot-separated segment; a key with no dot has none and is marked
- * `noNamespace`. The `public:` and `cached:` prefixes are kept as flags, so
- * the result names the same record when passed back to the client.
+ * `noNamespace`. A key ending in a dot has no namespace either: it is marked
+ * `noNamespace` and the dot stays in the key. The `public:` and `cached:`
+ * prefixes are kept as flags, so the result names the same record when passed
+ * back to the client.
+ *
+ * The atSigns and the namespace in the result are lowercase. A malformed
+ * recipient, owner or key name throws `AtError` `bad_key`, its message naming
+ * the expected shape.
  */
 export function parseKey(text: string, namespace?: string): AtKey {
   let rest = text;

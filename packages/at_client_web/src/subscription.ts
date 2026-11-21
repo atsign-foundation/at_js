@@ -3,6 +3,8 @@ import { AtError } from './error.js';
 /** The most events and stream errors a subscription buffers for an app that is not consuming them. */
 export const MAX_BUFFERED_EVENTS = 4096;
 
+type QueueEntry<T> = { ok: true; value: T } | { ok: false; error: unknown };
+
 /**
  * A buffer of at most `MAX_BUFFERED_EVENTS` events and errors together, read as an async iterator.
  * `end()` and `return()` finish it: waiting readers settle done, the buffer is
@@ -12,8 +14,6 @@ export const MAX_BUFFERED_EVENTS = 4096;
  * is done. `fail(error)` makes one `next()` reject with [error] without ending
  * the stream; unread errors count against the same cap.
  */
-type QueueEntry<T> = { ok: true; value: T } | { ok: false; error: unknown };
-
 export class EventQueue<T> implements AsyncIterableIterator<T> {
   private readonly entries: QueueEntry<T>[] = [];
   private waiters: Array<{

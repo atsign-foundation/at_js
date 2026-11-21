@@ -24,3 +24,23 @@ Feature: The build uses only the bridge release pinned in bridge.ref
     Given no override and no fetched bundle
     When the build picks its source
     Then it throws a message telling the caller to run npm run ci:prepare
+
+  Scenario: copy-bundle accepts a fetched bundle whose sha256 matches bridge.ref
+    Given a fetched bundle whose sha256 is the pinned one
+    When the build verifies its source
+    Then it uses the fetched bundle
+
+  Scenario: copy-bundle rejects a fetched bundle whose sha256 differs from bridge.ref
+    Given a fetched bundle whose sha256 differs from the pinned one
+    When the build verifies its source
+    Then it throws a checksum mismatch and the bundle is removed
+
+  Scenario: copy-bundle skips the checksum when AT_CLIENT_WEB_BUNDLE is set
+    Given AT_CLIENT_WEB_BUNDLE names a bundle
+    When the build verifies its source
+    Then it uses that bundle without checking its sha256
+
+  Scenario: fetch-bridge pins the source ref and denies self-hosted runners
+    Given the fetched bundle
+    When the attestation check is built
+    Then it names the release workflow, the trunk source ref and denies self-hosted runners

@@ -204,10 +204,7 @@ export class AtClient {
 
   /** Sends `value` to the key's `sharedWith` atSign as a notification. */
   notify(key: AtKey, value: string): Promise<boolean> {
-    return bridged(() => {
-      this.assertOpen();
-      return this.session.notify(toBridgeKey(key, this.namespace), value);
-    });
+    return this.bridgedOpen(() => this.session.notify(toBridgeKey(key, this.namespace), value));
   }
 
   /**
@@ -252,36 +249,34 @@ export class AtClient {
     if (this.closed) throw new AtError('the client is closed', 'closed');
   }
 
-  /** A one-time code a new device quotes to ask for enrollment. Needs `__manage`. */
-  otp(): Promise<string> {
+  /** `bridged`, rejecting with `closed` first when the client is closed. */
+  private bridgedOpen<R>(call: () => Promise<R>): Promise<R> {
     return bridged(() => {
       this.assertOpen();
-      return this.session.otp();
+      return call();
     });
+  }
+
+  /** A one-time code a new device quotes to ask for enrollment. Needs `__manage`. */
+  otp(): Promise<string> {
+    return this.bridgedOpen(() => this.session.otp());
   }
 
   /** The enrollment requests awaiting a decision. Needs `__manage`. */
   pendingEnrollments(): Promise<PendingEnrollment[]> {
-    return bridged(async () => {
-      this.assertOpen();
-      return (await this.session.pendingEnrollments()).map((e: BridgeEnrollment) => ({ ...e }));
-    });
+    return this.bridgedOpen(async () =>
+      (await this.session.pendingEnrollments()).map((e: BridgeEnrollment) => ({ ...e })),
+    );
   }
 
   /** Approves the pending request [id] for what it asked for. Needs `__manage`. */
   async approve(id: string): Promise<void> {
-    await bridged(() => {
-      this.assertOpen();
-      return this.session.approve(id);
-    });
+    await this.bridgedOpen(() => this.session.approve(id));
   }
 
   /** Denies the pending request [id]. Needs `__manage`. */
   async deny(id: string): Promise<void> {
-    await bridged(() => {
-      this.assertOpen();
-      return this.session.deny(id);
-    });
+    await this.bridgedOpen(() => this.session.deny(id));
   }
 
   /** Closes the session and ends every open `subscribe` iterator; closing twice is a no-op. */

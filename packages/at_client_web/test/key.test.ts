@@ -86,8 +86,15 @@ describe('parseKey', () => {
   });
 
   it('rejects malformed keys', () => {
-    expect(() => parseKey('@bob.wavi')).toThrow(/malformed/);
-    expect(() => parseKey('@bob:@alice')).toThrow(/malformed/);
-    expect(() => parseKey('a@bob@alice')).toThrow(/malformed/);
+    expect(() => parseKey('@bob.wavi')).toThrow('key recipient: must be @atSign: before the key');
+    expect(() => parseKey('note@')).toThrow('key owner: must be @atSign after the key');
+    expect(() => parseKey('a@bob@alice')).toThrow('key name: must be non-empty with at most one @atSign suffix');
+    expect(() => parseKey('@bob:@alice')).toThrow('key name: must be non-empty with at most one @atSign suffix');
+  });
+
+  it('names the expected shape without echoing the input', () => {
+    for (const text of ['@secret.wavi', 'secret@', 'sec@ret@x']) {
+      expect(() => parseKey(text)).toThrow(expect.objectContaining({ code: 'bad_key', message: expect.not.stringContaining('ecret') }));
+    }
   });
 });

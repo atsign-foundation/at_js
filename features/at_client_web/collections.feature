@@ -75,3 +75,8 @@ Feature: A collection offers eight operations over typed items
     Given a closed client with a collection
     When any operation is called
     Then it rejects with code closed and watch throws code closed
+
+  Scenario: watch keeps a null owner on a sub-item ancestor
+    Given an open watch
+    When a subItemUpdated event arrives whose ancestor has owner null
+    Then next() yields the event with that ancestor's owner still null

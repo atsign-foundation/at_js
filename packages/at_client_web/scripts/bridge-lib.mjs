@@ -7,6 +7,7 @@ export const BRIDGE_REPO = 'atsign-foundation/at_client_sdk';
 export const BRIDGE_ASSET = 'at_client_web.js';
 export const BRIDGE_SIGNER_WORKFLOW =
   'atsign-foundation/at_client_sdk/.github/workflows/at_client_web_bridge_release.yaml';
+export const BRIDGE_SOURCE_REF = 'refs/heads/trunk';
 export const BRIDGE_TAG_PATTERN = /^at_client_web-bridge-[0-9a-f]{12}$/;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 
@@ -60,4 +61,33 @@ export function resolveBundleSource({ root, env, exists }) {
     throw new Error(`missing ${fetched}; run \`npm run ci:prepare\` (or set AT_CLIENT_WEB_BUNDLE)`);
   }
   return fetched;
+}
+
+/** The `gh` arguments that check `file`'s build attestation: trunk source, hosted runners, the release workflow. */
+export function attestationArgs(file) {
+  return [
+    'attestation',
+    'verify',
+    file,
+    '-R',
+    BRIDGE_REPO,
+    '--signer-workflow',
+    BRIDGE_SIGNER_WORKFLOW,
+    '--source-ref',
+    BRIDGE_SOURCE_REF,
+    '--deny-self-hosted-runners',
+  ];
+}
+
+/**
+ * The bundle to copy, checked against bridge.ref's sha256 unless
+ * AT_CLIENT_WEB_BUNDLE names it (the caller then owns what it points at).
+ */
+export function verifiedBundleSource({ root, env, exists }) {
+  const source = resolveBundleSource({ root, env, exists });
+  if (!env.AT_CLIENT_WEB_BUNDLE) {
+    const ref = parseBridgeRef(readFileSync(resolve(root, 'bridge.ref'), 'utf8'));
+    verifyDownload(source, ref.sha256);
+  }
+  return source;
 }

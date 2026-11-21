@@ -34,7 +34,7 @@ await client.close();
 | Option | Meaning |
 |---|---|
 | `atSign` | The atSign the keys belong to |
-| `namespace` | Required. The one grant name: it scopes every key and is the namespace the session asks the atServer for |
+| `namespace` | Required. The one grant name: it scopes every key and is the namespace the session asks the atServer for. The client lowercases it for its own keys and subscriptions; the session is asked for it as given |
 | `keys` | Required. The `.atKeys` document |
 | `rootDomain` | Optional `host[:port]` of the root server. Passed through unchanged; default `root.atsign.org` |
 
@@ -106,7 +106,7 @@ Every call rejects with an `AtError`. Branch on `error.code`, never on the messa
 | `enrollment_conveyance_failed` | Approval or denial succeeded on the atServer, but delivering the response failed |
 | `closed` | The client is closed |
 | `unsupported` | Not a browser, not a secure context, or a pairing call without `__manage` |
-| `bad_key` | The keys are malformed or missing, or `namespace` is missing |
+| `bad_key` | The keys are malformed or missing, `namespace` is missing, or `create`'s options are `null` or not an object |
 | `overflow` | A subscription buffered more than 4096 events; it ended and its buffer was discarded |
 | `internal` | Anything else, including a bundle that failed to load |
 | `COLLECTION_*` | Collection failures: `INVALID_ARGUMENT`, `ITEM_NOT_FOUND`, `ITEM_NOT_OWNER`, `ITEM_ALREADY_EXISTS`, `ITEM_HAS_SUB_ITEMS`, `ITEM_UNREADABLE`, `ITEM_TOO_DEEP`, `TYPE_MISMATCH`, `ITEM_WRONG_TYPE`, `PARTIAL_FAILURE`, `FAILED` |

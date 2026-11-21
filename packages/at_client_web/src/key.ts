@@ -46,7 +46,7 @@ export function parseKey(text: string, namespace?: string): AtKey {
     rest = rest.slice('public:'.length);
   } else if (rest.startsWith('@')) {
     const colon = rest.indexOf(':');
-    if (colon <= 1) throw new AtError('malformed key recipient', 'bad_key');
+    if (colon <= 1) throw new AtError('key recipient: must be @atSign: before the key', 'bad_key');
     key.sharedWith = rest.slice(0, colon).toLowerCase();
     rest = rest.slice(colon + 1);
   }
@@ -54,12 +54,12 @@ export function parseKey(text: string, namespace?: string): AtKey {
   const at = rest.lastIndexOf('@');
   if (at >= 0) {
     const owner = rest.slice(at).toLowerCase();
-    if (owner.length <= 1) throw new AtError('malformed key owner', 'bad_key');
+    if (owner.length <= 1) throw new AtError('key owner: must be @atSign after the key', 'bad_key');
     key.sharedBy = owner;
     rest = rest.slice(0, at);
   }
   if (rest.includes('@') || rest.length === 0) {
-    throw new AtError('malformed key name', 'bad_key');
+    throw new AtError('key name: must be non-empty with at most one @atSign suffix', 'bad_key');
   }
 
   const normalizedNamespace = namespace?.toLowerCase();

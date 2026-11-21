@@ -51,8 +51,12 @@ Feature: notify sends to another atSign and subscribe delivers only genuine even
     When a notification arrives with a malformed key followed by a valid notification
     Then next() rejects with AtError code bad_key and the next next() yields the valid event
 
-  Scenario: parseKey canonicalizes atSigns and namespaces and rejects malformed keys
+  Scenario: canonicalizes atSigns and namespaces to lowercase
     Given a wire key string
     When parseKey parses a mixed-case key
     Then sharedBy, sharedWith, and namespace are lowercased
-    And malformed key strings throw AtError code bad_key
+
+  Scenario: rejects malformed keys
+    Given a malformed wire key string
+    When parseKey parses it
+    Then it throws AtError code bad_key saying which part is expected, without echoing the input

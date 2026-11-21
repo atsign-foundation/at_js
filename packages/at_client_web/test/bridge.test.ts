@@ -1,11 +1,16 @@
-import { mkdtempSync, rmSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  BRIDGE_REPO,
+  BRIDGE_SIGNER_WORKFLOW,
+  BRIDGE_SOURCE_REF,
+  attestationArgs,
   parseBridgeRef,
   resolveBundleSource,
   sha256Hex,
+  verifiedBundleSource,
   verifyDownload,
 } from '../scripts/bridge-lib.mjs';
 
@@ -91,5 +96,53 @@ describe('resolveBundleSource', () => {
     expect(() =>
       resolveBundleSource({ root, env: { AT_CLIENT_WEB_BUNDLE: '/x/b.js' }, exists: () => false }),
     ).toThrow(/AT_CLIENT_WEB_BUNDLE.*\/x\/b\.js/);
+  });
+});
+
+describe('verifiedBundleSource', () => {
+  function pkg(bundle: string, pinned: string): string {
+    const root = tmp();
+    mkdirSync(join(root, '.bridge'));
+    writeFileSync(join(root, '.bridge', 'at_client_web.js'), bundle);
+    writeFileSync(join(root, 'bridge.ref'), JSON.stringify({ tag, sha256: sha256Hex(Buffer.from(pinned)) }));
+    return root;
+  }
+
+  it('copy-bundle accepts a fetched bundle whose sha256 matches bridge.ref', () => {
+    const root = pkg('bundle', 'bundle');
+    expect(verifiedBundleSource({ root, env: {}, exists: existsSync })).toBe(join(root, '.bridge', 'at_client_web.js'));
+  });
+
+  it('copy-bundle rejects a fetched bundle whose sha256 differs from bridge.ref', () => {
+    const root = pkg('tampered', 'bundle');
+    expect(() => verifiedBundleSource({ root, env: {}, exists: existsSync })).toThrow(/checksum mismatch/);
+    expect(existsSync(join(root, '.bridge', 'at_client_web.js'))).toBe(false);
+  });
+
+  it('copy-bundle skips the checksum when AT_CLIENT_WEB_BUNDLE is set', () => {
+    const root = pkg('bundle', 'bundle');
+    const override = join(root, 'local.js');
+    writeFileSync(override, 'anything');
+    expect(verifiedBundleSource({ root, env: { AT_CLIENT_WEB_BUNDLE: override }, exists: existsSync })).toBe(override);
+    expect(existsSync(override)).toBe(true);
+  });
+});
+
+describe('attestationArgs', () => {
+  it('fetch-bridge pins the source ref and denies self-hosted runners', () => {
+    const args = attestationArgs('/b/at_client_web.js');
+    expect(args).toEqual([
+      'attestation',
+      'verify',
+      '/b/at_client_web.js',
+      '-R',
+      BRIDGE_REPO,
+      '--signer-workflow',
+      BRIDGE_SIGNER_WORKFLOW,
+      '--source-ref',
+      BRIDGE_SOURCE_REF,
+      '--deny-self-hosted-runners',
+    ]);
+    expect(BRIDGE_SOURCE_REF).toBe('refs/heads/trunk');
   });
 });

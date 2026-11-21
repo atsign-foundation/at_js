@@ -170,6 +170,23 @@ describe('error mapping', () => {
     }
   });
 
+  it('maps enrollment_conveyance_failed through unchanged', async () => {
+    const client = await AtClient.create(opts);
+    fake.session.approve.mockRejectedValueOnce({ code: 'enrollment_conveyance_failed', message: 'not delivered' });
+    expect(await rejection(client.approve('e1'))).toMatchObject({
+      name: 'AtError',
+      code: 'enrollment_conveyance_failed',
+      message: 'not delivered',
+    });
+  });
+
+  it('maps COLLECTION_ITEM_TOO_DEEP through unchanged', async () => {
+    const client = await AtClient.create(opts);
+    const tasks = await client.collection<{ n: number }>('tasks', { type: 'task' });
+    fake.col.collection.create.mockRejectedValueOnce({ code: 'COLLECTION_ITEM_TOO_DEEP', message: 'too deep' });
+    expect(await rejection(tasks.create({ n: 1 }))).toMatchObject({ code: 'COLLECTION_ITEM_TOO_DEEP' });
+  });
+
   it('maps an unknown code or a thrown Error to internal', async () => {
     bridge.create.mockRejectedValueOnce({ code: 'brand_new', message: 'm' });
     expect((await rejection(AtClient.create(opts))).code).toBe('internal');
@@ -418,6 +435,21 @@ describe('status', () => {
 
   it('create(null) rejects with bad_key', async () => {
     expect((await rejection(AtClient.create(null as never))).code).toBe('bad_key');
+    expect(loader).not.toHaveBeenCalled();
+  });
+
+  it('create with non-object options rejects with bad_key', async () => {
+    for (const bad of ['opts', 1, [opts]]) {
+      expect((await rejection(AtClient.create(bad as never))).code).toBe('bad_key');
+    }
+    expect(loader).not.toHaveBeenCalled();
+  });
+
+  it('create lowercases the namespace for the client but not for the bridge', async () => {
+    const client = await AtClient.create({ ...opts, namespace: 'Tally' });
+    expect(bridge.create.mock.calls.at(-1)![0].namespace).toBe('Tally');
+    await client.notify({ key: 'k', sharedWith: '@bob' }, 'v');
+    expect(fake.session.notify).toHaveBeenCalledWith({ key: 'k', namespace: 'tally', sharedWith: '@bob' }, 'v');
   });
 
   it('session async methods reject with closed after close()', async () => {
@@ -549,6 +581,14 @@ describe('collection', () => {
     fake.col.watchers[0]!.onEvent({ type: 'unknown', id: 'i2', owner: '@bob' });
     expect((await events.next()).value).toEqual({ type: 'updated', id: 'i1', owner: '@alice' });
     expect((await events.next()).value).toEqual({ type: 'unknown', id: 'i2', owner: '@bob' });
+  });
+
+  it('watch keeps a null owner on a sub-item ancestor', async () => {
+    const { tasks } = await open();
+    const events = tasks.watch()[Symbol.asyncIterator]();
+    const ancestry = [{ id: 'p1', subName: 'comments', owner: null }];
+    fake.col.watchers[0]!.onEvent({ type: 'subItemUpdated', id: 'c1', owner: '@alice', ancestry });
+    expect((await events.next()).value).toEqual({ type: 'subItemUpdated', id: 'c1', owner: '@alice', ancestry });
   });
 
   it('watch errors reject one next() and the stream carries on', async () => {

@@ -123,6 +123,15 @@ describe('create', () => {
     expect(loader).not.toHaveBeenCalled();
   });
 
+  it('a non-string namespace rejects bad_key before loading the bridge', async () => {
+    for (const bad of [5, true, {}, ['tally'], '']) {
+      const error = await rejection(AtClient.create({ ...opts, namespace: bad } as never));
+      expect(error.code).toBe('bad_key');
+      expect(error.message).toBe('AtClientOptions.namespace: must be a non-empty string');
+    }
+    expect(loader).not.toHaveBeenCalled();
+  });
+
   it('missing keys reject bad_key before loading the bridge', async () => {
     const error = await rejection(AtClient.create({ atSign: '@alice', namespace: 'tally' } as never));
     expect(error.code).toBe('bad_key');
@@ -434,7 +443,9 @@ describe('status', () => {
   });
 
   it('create(null) rejects with bad_key', async () => {
-    expect((await rejection(AtClient.create(null as never))).code).toBe('bad_key');
+    const error = await rejection(AtClient.create(null as never));
+    expect(error.code).toBe('bad_key');
+    expect(error.message).toBe('AtClientOptions: must be an object');
     expect(loader).not.toHaveBeenCalled();
   });
 

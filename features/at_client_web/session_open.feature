@@ -21,6 +21,13 @@ Feature: A browser opens an atSign session only where it safely can
     Then it rejects with AtError code bad_key
     And the Dart bundle has not been loaded
 
+  Scenario: a non-string namespace rejects bad_key before loading the bridge
+    Given a secure page
+    When create is called with a namespace that is not a non-empty string
+    Then it rejects with AtError code bad_key
+    And the message names AtClientOptions.namespace
+    And the Dart bundle has not been loaded
+
   Scenario: missing keys reject bad_key before loading the bridge
     Given a secure page
     When create is called without keys

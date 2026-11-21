@@ -109,9 +109,11 @@ function requireSecureBrowser(): void {
 /** The bridge's options for [opts]. */
 function bridgeOptions(opts: AtClientOptions): BridgeOptions {
   if (opts === null || typeof opts !== 'object' || Array.isArray(opts)) {
-    throw new AtError('AtClientOptions is required', 'bad_key');
+    throw new AtError('AtClientOptions: must be an object', 'bad_key');
   }
-  if (!opts.namespace) throw new AtError('AtClientOptions.namespace is required', 'bad_key');
+  if (typeof opts.namespace !== 'string' || opts.namespace === '') {
+    throw new AtError('AtClientOptions.namespace: must be a non-empty string', 'bad_key');
+  }
   if (opts.keys === undefined || opts.keys === null) {
     throw new AtError('AtClientOptions.keys is required', 'bad_key');
   }

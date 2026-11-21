@@ -56,6 +56,11 @@ Feature: notify sends to another atSign and subscribe delivers only genuine even
     When parseKey parses a mixed-case key
     Then sharedBy, sharedWith, and namespace are lowercased
 
+  Scenario: treats a trailing dot as no namespace
+    Given a wire key string ending in a dot, plain or shared
+    When parseKey parses it
+    Then the key keeps the dot and the result is marked noNamespace with no namespace
+
   Scenario: rejects malformed keys
     Given a malformed wire key string
     When parseKey parses it

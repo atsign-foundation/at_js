@@ -75,6 +75,13 @@ describe('parseKey', () => {
     });
   });
 
+  it('treats a trailing dot as no namespace', () => {
+    expect(parseKey('note.')).toEqual({ key: 'note.', noNamespace: true });
+    expect(parseKey('@bob:note.@alice')).toEqual({
+      key: 'note.', sharedWith: '@bob', sharedBy: '@alice', noNamespace: true,
+    });
+  });
+
   it('accepts a string with no owner', () => {
     expect(parseKey('rpc.req.1.tally', 'tally')).toEqual({ key: 'rpc.req.1', namespace: 'tally' });
   });

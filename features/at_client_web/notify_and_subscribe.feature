@@ -35,3 +35,24 @@ Feature: notify sends to another atSign and subscribe delivers only genuine even
     Given an open subscription
     When the bridge reports an error and then a notification
     Then one next rejects with the error's code and the next one delivers the notification
+
+  Scenario: delivers buffered events and failures in FIFO arrival order
+    Given an open subscription
+    When an event, a stream error, and another event arrive before next()
+    Then next() yields the first event, then rejects with the error, then yields the second event
+
+  Scenario: subscribe lowercases namespace in the default regex
+    Given an open client with an uppercase namespace
+    When subscribe is called without a regex
+    Then the bridge subscribes with the escaped lowercase namespace regex
+
+  Scenario: subscribe turns malformed notification keys into bad_key errors without crashing the listener
+    Given an open subscription
+    When a notification arrives with a malformed key followed by a valid notification
+    Then next() rejects with AtError code bad_key and the next next() yields the valid event
+
+  Scenario: parseKey canonicalizes atSigns and namespaces and rejects malformed keys
+    Given a wire key string
+    When parseKey parses a mixed-case key
+    Then sharedBy, sharedWith, and namespace are lowercased
+    And malformed key strings throw AtError code bad_key

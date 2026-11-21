@@ -158,12 +158,12 @@ describe('error mapping', () => {
 
   it('maps every code through unchanged', async () => {
     for (const code of [
-      'pkam_refused', 'offline', 'onboarding_incomplete', 'enrollment_denied', 'closed',
-      'unsupported', 'internal', 'bad_key',
+      'pkam_refused', 'offline', 'onboarding_incomplete', 'enrollment_denied',
+      'enrollment_conveyance_failed', 'closed', 'unsupported', 'internal', 'bad_key',
       'COLLECTION_INVALID_ARGUMENT', 'COLLECTION_ITEM_NOT_FOUND', 'COLLECTION_ITEM_NOT_OWNER',
       'COLLECTION_ITEM_ALREADY_EXISTS', 'COLLECTION_ITEM_HAS_SUB_ITEMS', 'COLLECTION_ITEM_UNREADABLE',
-      'COLLECTION_TYPE_MISMATCH', 'COLLECTION_ITEM_WRONG_TYPE', 'COLLECTION_PARTIAL_FAILURE',
-      'COLLECTION_FAILED',
+      'COLLECTION_ITEM_TOO_DEEP', 'COLLECTION_TYPE_MISMATCH', 'COLLECTION_ITEM_WRONG_TYPE',
+      'COLLECTION_PARTIAL_FAILURE', 'COLLECTION_FAILED',
     ]) {
       bridge.create.mockRejectedValueOnce({ code, message: code });
       expect((await rejection(AtClient.create(opts))).code).toBe(code);
@@ -406,7 +406,47 @@ describe('status', () => {
     const client = await AtClient.create(opts);
     await client.close();
     expect(() => client.onStatus(() => {})).toThrow(expect.objectContaining({ code: 'closed' }));
+    expect(() => client.onStatus(null as never)).toThrow(expect.objectContaining({ code: 'closed' }));
     expect(fake.session.onStatus).not.toHaveBeenCalled();
+  });
+
+  it('onStatus rejects non-function listeners before touching the bridge', async () => {
+    const client = await AtClient.create(opts);
+    expect(() => client.onStatus(null as never)).toThrow(expect.objectContaining({ code: 'internal' }));
+    expect(fake.session.onStatus).not.toHaveBeenCalled();
+  });
+
+  it('create(null) rejects with bad_key', async () => {
+    expect((await rejection(AtClient.create(null as never))).code).toBe('bad_key');
+  });
+
+  it('session async methods reject with closed after close()', async () => {
+    const client = await AtClient.create(opts);
+    await client.close();
+    expect((await rejection(client.notify({ key: 'k', sharedWith: '@bob' }, 'v'))).code).toBe('closed');
+    expect((await rejection(client.otp())).code).toBe('closed');
+    expect((await rejection(client.pendingEnrollments())).code).toBe('closed');
+    expect((await rejection(client.approve('id'))).code).toBe('closed');
+    expect((await rejection(client.deny('id'))).code).toBe('closed');
+  });
+
+  it('subscribe lowercases namespace in the default regex', async () => {
+    const client = await AtClient.create({ ...opts, namespace: 'Tally' });
+    client.subscribe();
+    expect(fake.session.subscribe).toHaveBeenCalledWith(
+      '\\.tally@',
+      expect.any(Function),
+      expect.any(Function),
+    );
+  });
+
+  it('subscribe turns malformed notification keys into bad_key errors without crashing the listener', async () => {
+    const client = await AtClient.create(opts);
+    const iter = client.subscribe()[Symbol.asyncIterator]();
+    fake.listeners[0]!({ operation: 'update', from: '@bob', key: '@bob.tally', value: null });
+    await expect(iter.next()).rejects.toMatchObject({ code: 'bad_key' });
+    fake.listeners[0]!({ operation: 'update', from: '@bob', key: 'ok.tally@bob', value: 'v' });
+    expect((await iter.next()).value).toMatchObject({ from: '@bob', key: { key: 'ok', namespace: 'tally', sharedBy: '@bob' }, value: 'v' });
   });
 
   it('has no retry', async () => {

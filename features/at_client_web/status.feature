@@ -26,6 +26,12 @@ Feature: The connection status is readable and observable
     When onStatus is called
     Then it throws AtError code closed
 
+  Scenario: onStatus rejects non-function listeners before touching the bridge
+    Given an open client
+    When onStatus is called with a non-function value
+    Then it throws AtError code internal
+    And the bridge listener is not registered
+
   Scenario: has no retry
     Given an open client
     Then it has no retry

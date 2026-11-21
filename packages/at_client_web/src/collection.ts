@@ -36,7 +36,7 @@ export interface ItemAddress {
 export interface UnreadableItem {
   id: string;
   owner: string;
-  code: 'COLLECTION_ITEM_UNREADABLE';
+  code: 'COLLECTION_ITEM_UNREADABLE' | 'COLLECTION_ITEM_TOO_DEEP';
 }
 
 /** What `list` and `query` resolve with. */
@@ -62,7 +62,7 @@ export interface Where {
 export interface Ancestor {
   id: string;
   subName: string;
-  owner: string;
+  owner: string | null;
 }
 
 /** One event `watch` delivers; every kind names the item's `id` and `owner`. */

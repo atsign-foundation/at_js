@@ -78,4 +78,16 @@ describe('parseKey', () => {
   it('accepts a string with no owner', () => {
     expect(parseKey('rpc.req.1.tally', 'tally')).toEqual({ key: 'rpc.req.1', namespace: 'tally' });
   });
+
+  it('canonicalizes atSigns and namespaces to lowercase', () => {
+    expect(parseKey('@Bob:note.WAVI@Alice', 'WAVI')).toEqual({
+      key: 'note', namespace: 'wavi', sharedWith: '@bob', sharedBy: '@alice',
+    });
+  });
+
+  it('rejects malformed keys', () => {
+    expect(() => parseKey('@bob.wavi')).toThrow(/malformed/);
+    expect(() => parseKey('@bob:@alice')).toThrow(/malformed/);
+    expect(() => parseKey('a@bob@alice')).toThrow(/malformed/);
+  });
 });

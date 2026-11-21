@@ -108,6 +108,9 @@ function requireSecureBrowser(): void {
 
 /** The bridge's options for [opts]. */
 function bridgeOptions(opts: AtClientOptions): BridgeOptions {
+  if (opts === null || typeof opts !== 'object' || Array.isArray(opts)) {
+    throw new AtError('AtClientOptions is required', 'bad_key');
+  }
   if (!opts.namespace) throw new AtError('AtClientOptions.namespace is required', 'bad_key');
   if (opts.keys === undefined || opts.keys === null) {
     throw new AtError('AtClientOptions.keys is required', 'bad_key');
@@ -154,7 +157,7 @@ export class AtClient {
     requireSecureBrowser();
     const options = bridgeOptions(opts);
     const session = await bridged(async () => (await loadBridge()).create(options));
-    return new AtClient(session, options.namespace);
+    return new AtClient(session, options.namespace.toLowerCase());
   }
 
   /**
@@ -187,6 +190,9 @@ export class AtClient {
   /** Calls [listener] with each later change of `status`; returns the function that stops it. Throws `AtError('closed')` after `close()`. */
   onStatus(listener: (status: ConnectionStatus) => void): () => void {
     this.assertOpen();
+    if (typeof listener !== 'function') {
+      throw new AtError('onStatus listener must be a function', 'internal');
+    }
     try {
       const off = this.session.onStatus((status) => listener(status as ConnectionStatus));
       if (typeof off !== 'function') throw off;
@@ -198,7 +204,10 @@ export class AtClient {
 
   /** Sends `value` to the key's `sharedWith` atSign as a notification. */
   notify(key: AtKey, value: string): Promise<boolean> {
-    return bridged(() => this.session.notify(toBridgeKey(key, this.namespace), value));
+    return bridged(() => {
+      this.assertOpen();
+      return this.session.notify(toBridgeKey(key, this.namespace), value);
+    });
   }
 
   /**
@@ -221,7 +230,13 @@ export class AtClient {
     try {
       const subscribed = this.session.subscribe(
         regex ?? `\\.${this.namespace.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}@`,
-        (notification) => queue.push(this.event(notification)),
+        (notification) => {
+          try {
+            queue.push(this.event(notification));
+          } catch (error) {
+            queue.fail(toAtError(error));
+          }
+        },
         (error) => queue.fail(toAtError(error)),
       );
       if (typeof subscribed !== 'function') throw subscribed;
@@ -239,24 +254,34 @@ export class AtClient {
 
   /** A one-time code a new device quotes to ask for enrollment. Needs `__manage`. */
   otp(): Promise<string> {
-    return bridged(() => this.session.otp());
+    return bridged(() => {
+      this.assertOpen();
+      return this.session.otp();
+    });
   }
 
   /** The enrollment requests awaiting a decision. Needs `__manage`. */
   pendingEnrollments(): Promise<PendingEnrollment[]> {
-    return bridged(async () =>
-      (await this.session.pendingEnrollments()).map((e: BridgeEnrollment) => ({ ...e })),
-    );
+    return bridged(async () => {
+      this.assertOpen();
+      return (await this.session.pendingEnrollments()).map((e: BridgeEnrollment) => ({ ...e }));
+    });
   }
 
   /** Approves the pending request [id] for what it asked for. Needs `__manage`. */
   async approve(id: string): Promise<void> {
-    await bridged(() => this.session.approve(id));
+    await bridged(() => {
+      this.assertOpen();
+      return this.session.approve(id);
+    });
   }
 
   /** Denies the pending request [id]. Needs `__manage`. */
   async deny(id: string): Promise<void> {
-    await bridged(() => this.session.deny(id));
+    await bridged(() => {
+      this.assertOpen();
+      return this.session.deny(id);
+    });
   }
 
   /** Closes the session and ends every open `subscribe` iterator; closing twice is a no-op. */

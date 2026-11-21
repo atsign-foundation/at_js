@@ -1,3 +1,4 @@
+import { AtError } from './error.js';
 import type { AtKey } from './index.js';
 
 /** A key as the bridge takes it: absent fields are left out. */
@@ -45,26 +46,31 @@ export function parseKey(text: string, namespace?: string): AtKey {
     rest = rest.slice('public:'.length);
   } else if (rest.startsWith('@')) {
     const colon = rest.indexOf(':');
-    if (colon > 0) {
-      key.sharedWith = rest.slice(0, colon);
-      rest = rest.slice(colon + 1);
-    }
+    if (colon <= 1) throw new AtError('malformed key recipient', 'bad_key');
+    key.sharedWith = rest.slice(0, colon).toLowerCase();
+    rest = rest.slice(colon + 1);
   }
 
   const at = rest.lastIndexOf('@');
   if (at >= 0) {
-    key.sharedBy = rest.slice(at);
+    const owner = rest.slice(at).toLowerCase();
+    if (owner.length <= 1) throw new AtError('malformed key owner', 'bad_key');
+    key.sharedBy = owner;
     rest = rest.slice(0, at);
   }
+  if (rest.includes('@') || rest.length === 0) {
+    throw new AtError('malformed key name', 'bad_key');
+  }
 
-  const suffix = namespace === undefined ? undefined : `.${namespace}`;
+  const normalizedNamespace = namespace?.toLowerCase();
+  const suffix = normalizedNamespace === undefined ? undefined : `.${normalizedNamespace}`;
   const dot = rest.lastIndexOf('.');
-  if (suffix !== undefined && rest.endsWith(suffix) && rest.length > suffix.length) {
+  if (suffix !== undefined && rest.toLowerCase().endsWith(suffix) && rest.length > suffix.length) {
     key.key = rest.slice(0, -suffix.length);
-    key.namespace = namespace;
-  } else if (dot > 0) {
+    key.namespace = normalizedNamespace;
+  } else if (dot > 0 && dot < rest.length - 1) {
     key.key = rest.slice(0, dot);
-    key.namespace = rest.slice(dot + 1);
+    key.namespace = rest.slice(dot + 1).toLowerCase();
   } else {
     key.key = rest;
     key.noNamespace = true;

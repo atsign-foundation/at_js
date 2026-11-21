@@ -27,7 +27,18 @@ function download(tag) {
 }
 
 function attest() {
-  gh('attestation', 'verify', file, '-R', BRIDGE_REPO, '--signer-workflow', BRIDGE_SIGNER_WORKFLOW);
+  gh(
+    'attestation',
+    'verify',
+    file,
+    '-R',
+    BRIDGE_REPO,
+    '--signer-workflow',
+    BRIDGE_SIGNER_WORKFLOW,
+    '--source-ref',
+    'refs/heads/trunk',
+    '--deny-self-hosted-runners',
+  );
 }
 
 try {

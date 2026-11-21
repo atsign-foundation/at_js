@@ -12,6 +12,8 @@ export type CollectionErrorCode =
   | 'COLLECTION_ITEM_HAS_SUB_ITEMS'
   /** A record could not be read on this device. */
   | 'COLLECTION_ITEM_UNREADABLE'
+  /** The item's data nests more than 64 levels. */
+  | 'COLLECTION_ITEM_TOO_DEEP'
   /** The collection's type does not match the one its items carry. */
   | 'COLLECTION_TYPE_MISMATCH'
   /** `update` on an item of another type. */
@@ -31,6 +33,8 @@ export type AtErrorCode =
   | 'onboarding_incomplete'
   /** The enrollment request was denied, or the pairing call was refused by the atServer. */
   | 'enrollment_denied'
+  /** Approval or denial was accepted by the atServer, but delivering the response failed. */
+  | 'enrollment_conveyance_failed'
   /** The client is closed. */
   | 'closed'
   /** This page, option, key file or session cannot do what was asked. */
@@ -48,6 +52,7 @@ const codes: ReadonlySet<string> = new Set<AtErrorCode>([
   'offline',
   'onboarding_incomplete',
   'enrollment_denied',
+  'enrollment_conveyance_failed',
   'closed',
   'unsupported',
   'internal',
@@ -59,6 +64,7 @@ const codes: ReadonlySet<string> = new Set<AtErrorCode>([
   'COLLECTION_ITEM_ALREADY_EXISTS',
   'COLLECTION_ITEM_HAS_SUB_ITEMS',
   'COLLECTION_ITEM_UNREADABLE',
+  'COLLECTION_ITEM_TOO_DEEP',
   'COLLECTION_TYPE_MISMATCH',
   'COLLECTION_ITEM_WRONG_TYPE',
   'COLLECTION_PARTIAL_FAILURE',

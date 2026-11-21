@@ -40,7 +40,7 @@ await client.close();
 
 Send another atSign a notification with `client.notify({ key: 'greeting', sharedWith: '@bob' }, 'hi')`.
 
-`subscribe(regex?)` registers when called, buffers up to 4096 events, and ends when you leave the loop or call `close()`. On overflow the subscription ends, buffered events are discarded, and `next()` rejects with `AtError('overflow')`; subscribe again to resume. An error raised on the stream rejects one `next()` and the stream carries on. Without `regex` it matches the client's namespace.
+`subscribe(regex?)` registers when called, buffers up to 4096 events, and ends when you leave the loop or call `close()`. On overflow the subscription ends, buffered events are discarded, and `next()` rejects with `AtError('overflow')`; subscribe again to resume. Events and stream errors arrive from `next()` in arrival order, so an error can follow or precede buffered events; each rejects one `next()` and the stream carries on. A notification whose key is malformed rejects one `next()` with `bad_key` the same way. The `key` of each event has its atSign and namespace in lowercase. Without `regex` it matches the client's namespace.
 
 **Notifications sent while the tab is closed or reloading are never delivered.** A session only receives what is sent while it is connected.
 
@@ -77,7 +77,7 @@ Item `data` is a plain object with no prototype. Items expire 7 days after creat
 
 ## Connection status
 
-`client.status` is the latest state; `client.onStatus(cb)` reports each change and returns an `off` function.
+`client.status` is the latest state; `client.onStatus(cb)` reports each change and returns an `off` function. A listener that is not a function throws `AtError('internal')` synchronously and registers nothing.
 
 | State | Meaning |
 |---|---|
@@ -106,9 +106,9 @@ Every call rejects with an `AtError`. Branch on `error.code`, never on the messa
 | `enrollment_conveyance_failed` | Approval or denial succeeded on the atServer, but delivering the response failed |
 | `closed` | The client is closed |
 | `unsupported` | Not a browser, not a secure context, or a pairing call without `__manage` |
-| `bad_key` | The keys are malformed or missing, `namespace` is missing, or `create`'s options are `null` or not an object |
+| `bad_key` | The keys are malformed or missing, `namespace` is missing, or `create`'s options are `null` or not an object; also a `subscribe` notification whose key is malformed (rejects one `next()`; the stream carries on) |
 | `overflow` | A subscription buffered more than 4096 events; it ended and its buffer was discarded |
-| `internal` | Anything else, including a bundle that failed to load |
+| `internal` | Anything else, including a bundle that failed to load or an `onStatus` listener that is not a function |
 | `COLLECTION_*` | Collection failures: `INVALID_ARGUMENT`, `ITEM_NOT_FOUND`, `ITEM_NOT_OWNER`, `ITEM_ALREADY_EXISTS`, `ITEM_HAS_SUB_ITEMS`, `ITEM_UNREADABLE`, `ITEM_TOO_DEEP`, `TYPE_MISMATCH`, `ITEM_WRONG_TYPE`, `PARTIAL_FAILURE`, `FAILED` |
 
 `subscribe`, `onStatus` and `watch` after `close` throw `AtError('closed')` synchronously; the other calls reject.

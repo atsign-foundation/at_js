@@ -29,7 +29,7 @@ Feature: The connection status is readable and observable
   Scenario: onStatus rejects non-function listeners before touching the bridge
     Given an open client
     When onStatus is called with a non-function value
-    Then it throws AtError code internal
+    Then it throws AtError code invalid_argument
     And the bridge listener is not registered
 
   Scenario: has no retry

@@ -109,10 +109,10 @@ function requireSecureBrowser(): void {
 /** The bridge's options for [opts]. */
 function bridgeOptions(opts: AtClientOptions): BridgeOptions {
   if (opts === null || typeof opts !== 'object' || Array.isArray(opts)) {
-    throw new AtError('AtClientOptions: must be an object', 'bad_key');
+    throw new AtError('AtClientOptions: must be an object', 'invalid_argument');
   }
   if (typeof opts.namespace !== 'string' || opts.namespace === '') {
-    throw new AtError('AtClientOptions.namespace: must be a non-empty string', 'bad_key');
+    throw new AtError('AtClientOptions.namespace: must be a non-empty string', 'invalid_argument');
   }
   if (opts.keys === undefined || opts.keys === null) {
     throw new AtError('AtClientOptions.keys is required', 'bad_key');
@@ -193,7 +193,7 @@ export class AtClient {
   onStatus(listener: (status: ConnectionStatus) => void): () => void {
     this.assertOpen();
     if (typeof listener !== 'function') {
-      throw new AtError('onStatus listener must be a function', 'internal');
+      throw new AtError('onStatus listener must be a function', 'invalid_argument');
     }
     try {
       const off = this.session.onStatus((status) => listener(status as ConnectionStatus));
@@ -248,7 +248,7 @@ export class AtClient {
   }
 
   private assertOpen(): void {
-    if (this.closed) throw new AtError('the client is closed', 'closed');
+    if (this.closed) throw new AtError('the session is closed', 'closed');
   }
 
   /** `bridged`, rejecting with `closed` first when the client is closed. */

@@ -15,16 +15,16 @@ Feature: A browser opens an atSign session only where it safely can
     When create is called with a rootDomain
     Then the bridge receives it unchanged
 
-  Scenario: a missing namespace rejects bad_key before loading the bridge
+  Scenario: a missing namespace rejects invalid_argument before loading the bridge
     Given a secure page
     When create is called without a namespace
-    Then it rejects with AtError code bad_key
+    Then it rejects with AtError code invalid_argument
     And the Dart bundle has not been loaded
 
-  Scenario: a non-string namespace rejects bad_key before loading the bridge
+  Scenario: a non-string namespace rejects invalid_argument before loading the bridge
     Given a secure page
     When create is called with a namespace that is not a non-empty string
-    Then it rejects with AtError code bad_key
+    Then it rejects with AtError code invalid_argument
     And the message names AtClientOptions.namespace
     And the Dart bundle has not been loaded
 
@@ -44,16 +44,16 @@ Feature: A browser opens an atSign session only where it safely can
     Given the AtClient class
     Then it has no onboard, enroll or prfSupported
 
-  Scenario: create(null) rejects with bad_key
+  Scenario: create(null) rejects with invalid_argument
     Given a secure page
     When create is called with null
-    Then it rejects with AtError code bad_key
+    Then it rejects with AtError code invalid_argument
     And the Dart bundle has not been loaded
 
-  Scenario: create with non-object options rejects with bad_key
+  Scenario: create with non-object options rejects with invalid_argument
     Given a secure page
     When create is called with a string, a number or an array
-    Then each rejects with AtError code bad_key
+    Then each rejects with AtError code invalid_argument
     And the Dart bundle has not been loaded
 
   Scenario: create lowercases the namespace for the client but not for the bridge

@@ -117,16 +117,16 @@ describe('create', () => {
     });
   });
 
-  it('a missing namespace rejects bad_key before loading the bridge', async () => {
+  it('a missing namespace rejects invalid_argument before loading the bridge', async () => {
     const error = await rejection(AtClient.create({ atSign: '@alice', keys }));
-    expect(error.code).toBe('bad_key');
+    expect(error.code).toBe('invalid_argument');
     expect(loader).not.toHaveBeenCalled();
   });
 
-  it('a non-string namespace rejects bad_key before loading the bridge', async () => {
+  it('a non-string namespace rejects invalid_argument before loading the bridge', async () => {
     for (const bad of [5, true, {}, ['tally'], '']) {
       const error = await rejection(AtClient.create({ ...opts, namespace: bad } as never));
-      expect(error.code).toBe('bad_key');
+      expect(error.code).toBe('invalid_argument');
       expect(error.message).toBe('AtClientOptions.namespace: must be a non-empty string');
     }
     expect(loader).not.toHaveBeenCalled();
@@ -460,20 +460,20 @@ describe('status', () => {
 
   it('onStatus rejects non-function listeners before touching the bridge', async () => {
     const client = await AtClient.create(opts);
-    expect(() => client.onStatus(null as never)).toThrow(expect.objectContaining({ code: 'internal' }));
+    expect(() => client.onStatus(null as never)).toThrow(expect.objectContaining({ code: 'invalid_argument' }));
     expect(fake.session.onStatus).not.toHaveBeenCalled();
   });
 
-  it('create(null) rejects with bad_key', async () => {
+  it('create(null) rejects with invalid_argument', async () => {
     const error = await rejection(AtClient.create(null as never));
-    expect(error.code).toBe('bad_key');
+    expect(error.code).toBe('invalid_argument');
     expect(error.message).toBe('AtClientOptions: must be an object');
     expect(loader).not.toHaveBeenCalled();
   });
 
-  it('create with non-object options rejects with bad_key', async () => {
+  it('create with non-object options rejects with invalid_argument', async () => {
     for (const bad of ['opts', 1, [opts]]) {
-      expect((await rejection(AtClient.create(bad as never))).code).toBe('bad_key');
+      expect((await rejection(AtClient.create(bad as never))).code).toBe('invalid_argument');
     }
     expect(loader).not.toHaveBeenCalled();
   });
@@ -483,6 +483,18 @@ describe('status', () => {
     expect(bridge.create.mock.calls.at(-1)![0].namespace).toBe('Tally');
     await client.notify({ key: 'k', sharedWith: '@bob' }, 'v');
     expect(fake.session.notify).toHaveBeenCalledWith({ key: 'k', namespace: 'tally', sharedWith: '@bob' }, 'v');
+  });
+
+  it('every closed rejection from the client says the session is closed', async () => {
+    const client = await AtClient.create(opts);
+    await client.close();
+    expect(await rejection(client.otp())).toMatchObject({ code: 'closed', message: 'the session is closed' });
+    expect(() => client.subscribe()).toThrow(
+      expect.objectContaining({ code: 'closed', message: 'the session is closed' }),
+    );
+    expect(() => client.onStatus(() => {})).toThrow(
+      expect.objectContaining({ code: 'closed', message: 'the session is closed' }),
+    );
   });
 
   it('session async methods reject with closed after close()', async () => {

@@ -132,9 +132,12 @@ describe('create', () => {
     expect(loader).not.toHaveBeenCalled();
   });
 
-  it('missing keys reject bad_key before loading the bridge', async () => {
-    const error = await rejection(AtClient.create({ atSign: '@alice', namespace: 'tally' } as never));
-    expect(error.code).toBe('bad_key');
+  it('missing or mistyped keys reject invalid_argument naming keys before loading the bridge', async () => {
+    for (const bad of [undefined, null, 5, true, [keys]]) {
+      const error = await rejection(AtClient.create({ atSign: '@alice', namespace: 'tally', keys: bad } as never));
+      expect(error.code).toBe('invalid_argument');
+      expect(error.message).toBe('AtClientOptions.keys: must be an .atKeys JSON object or its text');
+    }
     expect(loader).not.toHaveBeenCalled();
   });
 

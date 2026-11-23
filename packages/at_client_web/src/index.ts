@@ -114,8 +114,10 @@ function bridgeOptions(opts: AtClientOptions): BridgeOptions {
   if (typeof opts.namespace !== 'string' || opts.namespace === '') {
     throw new AtError('AtClientOptions.namespace: must be a non-empty string', 'invalid_argument');
   }
-  if (opts.keys === undefined || opts.keys === null) {
-    throw new AtError('AtClientOptions.keys is required', 'bad_key');
+  const { keys } = opts;
+  const keysShapeOk = typeof keys === 'string' || (typeof keys === 'object' && keys !== null && !Array.isArray(keys));
+  if (!keysShapeOk) {
+    throw new AtError('AtClientOptions.keys: must be an .atKeys JSON object or its text', 'invalid_argument');
   }
   const options: BridgeOptions = {
     atSign: opts.atSign,

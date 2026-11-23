@@ -107,8 +107,8 @@ Every call rejects with an `AtError`. Branch on `error.code`, never on the messa
 | `enrollment_conveyance_failed` | Approval or denial succeeded on the atServer, but delivering the response failed |
 | `closed` | The client is closed; the message is `the session is closed` |
 | `unsupported` | Not a browser, not a secure context, or a pairing call without `__manage` |
-| `bad_key` | The keys are malformed or missing; also a `subscribe` notification whose key is malformed (rejects one `next()`; the stream carries on) |
-| `invalid_argument` | A caller mistake: a malformed argument, `create`'s options being `null` or not an object, a missing or invalid `namespace`, an invalid regex or `address.owner`, or `data`/`opts` that are not plain objects. The message names the parameter, never its value |
+| `bad_key` | The keys are not valid JSON or not a usable `.atKeys` document; also a `subscribe` notification whose key is malformed (rejects one `next()`; the stream carries on) |
+| `invalid_argument` | A caller mistake: a malformed argument, `create`'s options being `null` or not an object, a missing or invalid `namespace`, missing or mistyped `keys`, an invalid regex or `address.owner`, or `data`/`opts` that are not plain objects. The message names the parameter, never its value |
 | `overflow` | A subscription buffered more than 4096 events; it ended and its buffer was discarded |
 | `internal` | Anything else, including a bundle that failed to load |
 | `COLLECTION_*` | Collection failures: `INVALID_ARGUMENT`, `ITEM_NOT_FOUND`, `ITEM_NOT_OWNER`, `ITEM_ALREADY_EXISTS`, `ITEM_HAS_SUB_ITEMS`, `ITEM_UNREADABLE`, `ITEM_TOO_DEEP`, `TYPE_MISMATCH`, `ITEM_WRONG_TYPE`, `PARTIAL_FAILURE`, `FAILED` |

@@ -168,7 +168,8 @@ describe('error mapping', () => {
   it('maps every code through unchanged', async () => {
     for (const code of [
       'pkam_refused', 'offline', 'onboarding_incomplete', 'enrollment_denied',
-      'enrollment_conveyance_failed', 'closed', 'unsupported', 'internal', 'bad_key',
+      'enrollment_in_flight', 'enrollment_conveyance_failed', 'closed', 'unsupported', 'internal',
+      'bad_key', 'invalid_argument',
       'COLLECTION_INVALID_ARGUMENT', 'COLLECTION_ITEM_NOT_FOUND', 'COLLECTION_ITEM_NOT_OWNER',
       'COLLECTION_ITEM_ALREADY_EXISTS', 'COLLECTION_ITEM_HAS_SUB_ITEMS', 'COLLECTION_ITEM_UNREADABLE',
       'COLLECTION_ITEM_TOO_DEEP', 'COLLECTION_TYPE_MISMATCH', 'COLLECTION_ITEM_WRONG_TYPE',
@@ -186,6 +187,27 @@ describe('error mapping', () => {
       name: 'AtError',
       code: 'enrollment_conveyance_failed',
       message: 'not delivered',
+    });
+  });
+
+  it('maps invalid_argument through unchanged', async () => {
+    const client = await AtClient.create(opts);
+    fake.session.subscribe.mockReturnValueOnce({ code: 'invalid_argument', message: 'regex: must be a string' } as never);
+    expect(() => client.subscribe('x')).toThrow(
+      expect.objectContaining({ name: 'AtError', code: 'invalid_argument', message: 'regex: must be a string' }),
+    );
+  });
+
+  it('maps enrollment_in_flight through unchanged', async () => {
+    const client = await AtClient.create(opts);
+    fake.session.deny.mockRejectedValueOnce({
+      code: 'enrollment_in_flight',
+      message: 'a decision for this request is already in flight',
+    });
+    expect(await rejection(client.deny('e1'))).toMatchObject({
+      name: 'AtError',
+      code: 'enrollment_in_flight',
+      message: 'a decision for this request is already in flight',
     });
   });
 

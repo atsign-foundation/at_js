@@ -33,6 +33,8 @@ export type AtErrorCode =
   | 'onboarding_incomplete'
   /** The enrollment request was denied, or the pairing call was refused by the atServer. */
   | 'enrollment_denied'
+  /** `approve` or `deny` named an enrollment id whose decision is already in flight; nothing was sent. */
+  | 'enrollment_in_flight'
   /** Approval or denial was accepted by the atServer, but delivering the response failed. */
   | 'enrollment_conveyance_failed'
   /** The client is closed. */
@@ -41,8 +43,10 @@ export type AtErrorCode =
   | 'unsupported'
   /** Any failure with no code of its own. */
   | 'internal'
-  /** A key or the `.atKeys` document is malformed, or `namespace` is missing. */
+  /** A key or the `.atKeys` document is malformed. */
   | 'bad_key'
+  /** A caller mistake: a malformed argument, an invalid namespace, regex or owner, or non-plain data. The message names the parameter, never its value. */
+  | 'invalid_argument'
   /** A subscription buffered more than 4096 events the app did not consume. */
   | 'overflow'
   | CollectionErrorCode;
@@ -52,11 +56,13 @@ const codes: ReadonlySet<string> = new Set<AtErrorCode>([
   'offline',
   'onboarding_incomplete',
   'enrollment_denied',
+  'enrollment_in_flight',
   'enrollment_conveyance_failed',
   'closed',
   'unsupported',
   'internal',
   'bad_key',
+  'invalid_argument',
   'overflow',
   'COLLECTION_INVALID_ARGUMENT',
   'COLLECTION_ITEM_NOT_FOUND',

@@ -28,3 +28,13 @@ Feature: Every failure is an AtError whose code the caller branches on
     Given a bridge whose collection create rejects with COLLECTION_ITEM_TOO_DEEP
     When create is called on the collection
     Then it rejects with an AtError carrying that code
+
+  Scenario: maps invalid_argument through unchanged
+    Given a bridge whose subscribe answers with { code: 'invalid_argument', message }
+    When subscribe is called
+    Then it throws an AtError carrying that code and the bridge's message
+
+  Scenario: maps enrollment_in_flight through unchanged
+    Given a bridge whose deny rejects with enrollment_in_flight
+    When deny is called
+    Then it rejects with an AtError carrying that code and the bridge's message

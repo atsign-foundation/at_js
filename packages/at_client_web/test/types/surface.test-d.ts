@@ -37,6 +37,8 @@ export const denied: Promise<void> = client.deny('id');
 
 export const errorOut: Error & { code: string } = {} as impl.AtError;
 export const code: impl.AtErrorCode = 'bad_key';
+export const invalidArgument: impl.AtErrorCode = 'invalid_argument';
+export const inFlight: impl.AtErrorCode = 'enrollment_in_flight';
 
 // The flat data plane and the passkey entry points are not part of the surface.
 // @ts-expect-error no get

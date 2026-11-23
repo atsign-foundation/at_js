@@ -1,0 +1,11 @@
+# Default: Gary or Srie reviews every path not listed below.
+*                         @gkc @srieteja
+
+# Version bumps, workspace manifests and Dependabot changes are handled
+# between Srie and Chris.
+/package.json             @cpswan @srieteja
+/package-lock.json        @cpswan @srieteja
+/tools/*/package.json     @cpswan @srieteja
+/.node-version            @cpswan @srieteja
+/.github/dependabot.yml   @cpswan @srieteja
+/.github/workflows/       @cpswan @srieteja

@@ -90,10 +90,4 @@ Every `Scenario:` title in `features/<name>/*.feature` must appear as a quoted t
 
 ## Maintainers
 
-Who created this?  
-
-Do they have complete GitHub profiles?  
-
-How can they be contacted?  
-
-Who is going to respond to pull requests?  
+[Atsign Foundation maintainers](https://github.com/orgs/atsign-foundation/teams/maintainers)  

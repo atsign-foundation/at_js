@@ -22,8 +22,14 @@ export interface BridgeEnrollment {
 export interface BridgeOptions {
   atSign: string;
   namespace: string;
-  /** The `.atKeys` document, as its JSON text or as an object. */
-  keys: string | Record<string, unknown>;
+  /** The `.atKeys` document, as its JSON text or as an object; absent with `passkey`. */
+  keys?: string | Record<string, unknown>;
+  /** Sign in with a platform passkey instead of a `.atKeys` document. */
+  passkey?: true;
+  /** The relying party id the passkey is scoped to; given with `passkey`. */
+  rpId?: string;
+  /** The relying party name the browser shows; given with `passkey`. */
+  rpName?: string;
   rootDomain?: string;
 }
 

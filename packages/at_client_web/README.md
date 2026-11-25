@@ -35,8 +35,21 @@ await client.close();
 |---|---|
 | `atSign` | The atSign the keys belong to |
 | `namespace` | Required. The one grant name: it scopes every key and is the namespace the session asks the atServer for. The client lowercases it for its own keys and subscriptions; the session is asked for it as given |
-| `keys` | Required. The `.atKeys` document |
+| `keys` | The `.atKeys` document. Required unless `passkey` is `true` |
+| `passkey` | Optional `true`. Signs in with a platform passkey instead of a `.atKeys` document; requires `rpId` and `rpName`, and cannot be combined with `keys` |
+| `rpId` | Required with `passkey`: the relying party id the passkey is scoped to |
+| `rpName` | Required with `passkey`: the relying party name the browser shows when it asks for the passkey |
 | `rootDomain` | Optional `host[:port]` of the root server. Passed through unchanged; default `root.atsign.org` |
+
+```ts
+const client = await AtClient.create({
+  atSign: '@alice',
+  namespace: 'myapp',
+  passkey: true,
+  rpId: 'myapp.example.com',
+  rpName: 'My App',
+});
+```
 
 Send another atSign a notification with `client.notify({ key: 'greeting', sharedWith: '@bob' }, 'hi')`.
 
@@ -108,10 +121,12 @@ Every call rejects with an `AtError`. Branch on `error.code`, never on the messa
 | `closed` | The client is closed; the message is `the session is closed` |
 | `unsupported` | Not a browser, not a secure context, or a pairing call without `__manage` |
 | `bad_key` | The keys are not valid JSON or not a usable `.atKeys` document; also a `subscribe` notification whose key is malformed (rejects one `next()`; the stream carries on) |
-| `invalid_argument` | A caller mistake: a malformed argument, `create`'s options being `null` or not an object, a missing or invalid `namespace`, missing or mistyped `keys`, an invalid regex or `address.owner`, or `data`/`opts` that are not plain objects. The message names the parameter, never its value |
+| `invalid_argument` | A caller mistake: a malformed argument, `create`'s options being `null` or not an object, a missing or invalid `namespace`, missing or mistyped `keys` (unless `passkey` is `true`), `passkey: true` without `rpId`/`rpName` or together with `keys`, an invalid regex or `address.owner`, or `data`/`opts` that are not plain objects. The message names the parameter, never its value |
 | `overflow` | A subscription buffered more than 4096 events; it ended and its buffer was discarded |
 | `internal` | Anything else, including a bundle that failed to load |
 | `COLLECTION_*` | Collection failures: `INVALID_ARGUMENT`, `ITEM_NOT_FOUND`, `ITEM_NOT_OWNER`, `ITEM_ALREADY_EXISTS`, `ITEM_HAS_SUB_ITEMS`, `ITEM_UNREADABLE`, `ITEM_TOO_DEEP`, `TYPE_MISMATCH`, `ITEM_WRONG_TYPE`, `PARTIAL_FAILURE`, `FAILED` |
+
+**Bounded text.** The bridge bounds ids, owners, names, recipients, namespace keys, event and ancestry fields, and an item's stored type to one line of at most 128 characters. Payloads are delivered as received: a notification's `value` and an item's `data` get no length or newline check.
 
 `subscribe`, `onStatus` and `watch` after `close` throw `AtError('closed')` synchronously; the other calls reject.
 
@@ -133,7 +148,7 @@ Every call rejects with an `AtError`. Branch on `error.code`, never on the messa
 
 - Keys come from a `.atKeys` document: the plaintext JSON, or the flat shape of the key fields. Documents whose key fields are self-encrypted are not decrypted in the browser.
 - The connection status is classified when the connection changes state; a browser online/offline event alone does not emit one.
-- No passkey sign-in, onboarding or enrollment of new browsers.
+- No onboarding or enrollment of new browsers; passkey sign-in is only the `passkey` option of `create`.
 - Browser only; there is no Node runtime.
 
 ## API reference

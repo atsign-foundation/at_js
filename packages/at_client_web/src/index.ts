@@ -34,8 +34,15 @@ export interface AtClientOptions {
    * The atSign's `.atKeys` document, as its JSON text or as an object. It
    * must be the plain document: a keys file whose fields are encrypted
    * with the atSign's self-encryption key is not readable in a browser.
+   * Required unless `passkey` is `true`.
    */
-  keys: string | Record<string, unknown>;
+  keys?: string | Record<string, unknown>;
+  /** Sign in with a platform passkey instead of a `.atKeys` document; requires `rpId` and `rpName`. */
+  passkey?: true;
+  /** The relying party id the passkey is scoped to; required with `passkey: true`. */
+  rpId?: string;
+  /** The relying party name the browser shows when it asks for the passkey; required with `passkey: true`. */
+  rpName?: string;
   /** The atDirectory to look atSigns up at, `host` or `host:port` (port 64 by default); `root.atsign.org` when left out. */
   rootDomain?: string;
 }
@@ -114,16 +121,38 @@ function bridgeOptions(opts: AtClientOptions): BridgeOptions {
   if (typeof opts.namespace !== 'string' || opts.namespace === '') {
     throw new AtError('AtClientOptions.namespace: must be a non-empty string', 'invalid_argument');
   }
-  const { keys } = opts;
-  const keysShapeOk = typeof keys === 'string' || (typeof keys === 'object' && keys !== null && !Array.isArray(keys));
-  if (!keysShapeOk) {
-    throw new AtError('AtClientOptions.keys: must be an .atKeys JSON object or its text', 'invalid_argument');
+  const options: BridgeOptions = { atSign: opts.atSign, namespace: opts.namespace };
+  if (opts.passkey !== undefined && opts.passkey !== true) {
+    throw new AtError('AtClientOptions.passkey: must be true when given', 'invalid_argument');
   }
-  const options: BridgeOptions = {
-    atSign: opts.atSign,
-    namespace: opts.namespace,
-    keys: opts.keys,
-  };
+  if (opts.passkey === true) {
+    if (opts.keys !== undefined) {
+      throw new AtError('AtClientOptions.keys: cannot be combined with passkey: true', 'invalid_argument');
+    }
+    if (typeof opts.rpId !== 'string' || opts.rpId === '') {
+      throw new AtError(
+        'AtClientOptions.rpId: must be a non-empty string when passkey is true',
+        'invalid_argument',
+      );
+    }
+    if (typeof opts.rpName !== 'string' || opts.rpName === '') {
+      throw new AtError(
+        'AtClientOptions.rpName: must be a non-empty string when passkey is true',
+        'invalid_argument',
+      );
+    }
+    options.passkey = true;
+    options.rpId = opts.rpId;
+    options.rpName = opts.rpName;
+  } else {
+    const { keys } = opts;
+    if (typeof keys === 'string') options.keys = keys;
+    else if (typeof keys === 'object' && keys !== null && !Array.isArray(keys)) {
+      options.keys = keys as Record<string, unknown>;
+    } else {
+      throw new AtError('AtClientOptions.keys: must be an .atKeys JSON object or its text', 'invalid_argument');
+    }
+  }
   if (opts.rootDomain !== undefined) options.rootDomain = opts.rootDomain;
   return options;
 }
@@ -156,7 +185,7 @@ export class AtClient {
     private readonly namespace: string,
   ) {}
 
-  /** Opens the session for [opts]: the atSign, its `.atKeys` and the namespace. */
+  /** Opens the session for [opts]: the atSign and namespace, from its `.atKeys` document or a passkey. */
   static async create(opts: AtClientOptions): Promise<AtClient> {
     requireSecureBrowser();
     const options = bridgeOptions(opts);

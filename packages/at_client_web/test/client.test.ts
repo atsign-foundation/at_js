@@ -117,6 +117,56 @@ describe('create', () => {
     });
   });
 
+  it('passkey create forwards the passkey options to the bridge', async () => {
+    const client = await AtClient.create({
+      atSign: '@alice',
+      namespace: 'tally',
+      passkey: true,
+      rpId: 'example.com',
+      rpName: 'Tally',
+    });
+    expect(bridge.create).toHaveBeenCalledWith({
+      atSign: '@alice',
+      namespace: 'tally',
+      passkey: true,
+      rpId: 'example.com',
+      rpName: 'Tally',
+    });
+    expect(client).toBeInstanceOf(AtClient);
+  });
+
+  it('passkey true without rpId or rpName rejects invalid_argument naming the option', async () => {
+    const cases: Array<[Record<string, unknown>, string]> = [
+      [{ rpName: 'Tally' }, 'AtClientOptions.rpId'],
+      [{ rpId: 'example.com' }, 'AtClientOptions.rpName'],
+      [{}, 'AtClientOptions.rpId'],
+    ];
+    for (const [passkeyOptions, option] of cases) {
+      const error = await rejection(
+        AtClient.create({ atSign: '@alice', namespace: 'tally', passkey: true, ...passkeyOptions } as never),
+      );
+      expect(error.code).toBe('invalid_argument');
+      expect(error.message).toContain(option);
+    }
+    expect(loader).not.toHaveBeenCalled();
+  });
+
+  it('keys with passkey true reject invalid_argument before loading the bridge', async () => {
+    const error = await rejection(
+      AtClient.create({
+        atSign: '@alice',
+        namespace: 'tally',
+        keys,
+        passkey: true,
+        rpId: 'example.com',
+        rpName: 'Tally',
+      } as never),
+    );
+    expect(error.code).toBe('invalid_argument');
+    expect(error.message).toContain('AtClientOptions.keys');
+    expect(loader).not.toHaveBeenCalled();
+  });
+
   it('a missing namespace rejects invalid_argument before loading the bridge', async () => {
     const error = await rejection(AtClient.create({ atSign: '@alice', keys }));
     expect(error.code).toBe('invalid_argument');

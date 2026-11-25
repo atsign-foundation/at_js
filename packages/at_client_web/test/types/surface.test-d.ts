@@ -6,6 +6,15 @@ import { AtClient } from '../../dist/index.js';
 declare const client: impl.AtClient;
 
 export const create: (opts: impl.AtClientOptions) => Promise<impl.AtClient> = AtClient.create;
+export const passkeyCreate: Promise<impl.AtClient> = AtClient.create({
+  atSign: '@alice',
+  namespace: 'tally',
+  passkey: true,
+  rpId: 'example.com',
+  rpName: 'Tally',
+});
+// @ts-expect-error passkey is true when given, never false
+void AtClient.create({ atSign: '@alice', namespace: 'tally', passkey: false });
 export const status: impl.ConnectionStatus = client.status;
 export const off: () => void = client.onStatus((next: impl.ConnectionStatus) => void next);
 

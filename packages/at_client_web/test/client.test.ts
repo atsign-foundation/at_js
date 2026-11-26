@@ -381,6 +381,16 @@ describe('session calls', () => {
     }
     expect(fake.session.notify).not.toHaveBeenCalled();
   });
+
+  it('notify with a key that is not a plain object rejects invalid_argument naming AtKey and sends nothing', async () => {
+    const client = await AtClient.create(opts);
+    for (const key of [null, undefined, 'k', 5, true, []]) {
+      const error = await rejection(client.notify(key as never, 'v'));
+      expect(error.code).toBe('invalid_argument');
+      expect(error.message).toBe('AtKey: must be an object');
+    }
+    expect(fake.session.notify).not.toHaveBeenCalled();
+  });
 });
 
 describe('pairing', () => {

@@ -36,6 +36,12 @@ Feature: notify sends to another atSign and subscribe delivers only genuine even
     Then each rejects with AtError code invalid_argument naming AtKey.<field>
     And the bridge is not asked to notify
 
+  Scenario: notify with a key that is not a plain object rejects invalid_argument naming AtKey and sends nothing
+    Given an open session
+    When notify is called with a null, undefined or non-object key
+    Then it rejects with AtError code invalid_argument naming AtKey
+    And the bridge is not asked to notify
+
   Scenario: a subscription that buffers past the cap unsubscribes and rejects with overflow
     Given an open subscription the app is not reading
     When 4097 events arrive

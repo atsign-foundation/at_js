@@ -28,7 +28,12 @@ export type {
 interface AtClientSharedOptions {
   /** The atSign to open, such as `@alice`. */
   atSign: string;
-  /** Required: it scopes every key this client reads and writes, and names the enrollment's app. */
+  /**
+   * Required at runtime: it scopes every key this client reads and writes, and
+   * names the enrollment's app; `bridgeOptions` rejects a missing or empty one
+   * with `invalid_argument`. Optional in the type only so callers get that
+   * named error instead of a type error.
+   */
   namespace?: string;
   /** The atDirectory to look atSigns up at, `host` or `host:port` (port 64 by default); `root.atsign.org` when left out. */
   rootDomain?: string;
@@ -222,8 +227,7 @@ export class AtClient {
     name: string,
     options: { type: string; eventSource?: 'data' | 'notifs' | 'both'; expiration?: number },
   ): Promise<Collection<T>> {
-    return bridged(async () => {
-      this.assertOpen();
+    return this.bridgedOpen(async () => {
       const opened = await this.session.collection(name, options);
       return openCollection<T>(opened, {
         assertOpen: () => this.assertOpen(),

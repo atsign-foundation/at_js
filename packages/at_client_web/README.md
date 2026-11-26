@@ -130,7 +130,7 @@ Every call rejects with an `AtError`. Branch on `error.code`, never on the messa
 | `internal` | Anything else, including a bundle that failed to load |
 | `COLLECTION_*` | Collection failures: `INVALID_ARGUMENT`, `ITEM_NOT_FOUND`, `ITEM_NOT_OWNER`, `ITEM_ALREADY_EXISTS`, `ITEM_HAS_SUB_ITEMS`, `ITEM_UNREADABLE`, `ITEM_TOO_DEEP`, `TYPE_MISMATCH`, `ITEM_WRONG_TYPE`, `PARTIAL_FAILURE`, `FAILED` |
 
-**Bounded text.** The bridge bounds ids, owners, names, recipients, namespace keys, event and ancestry fields, and an item's stored type to one line of at most 128 characters. Payloads are delivered as received: a notification's `value` and an item's `data` get no length or newline check.
+**Bounded text.** The pinned Dart bridge (see [Development](#development)) bounds ids, owners, names, recipients, namespace keys, event and ancestry fields, and an item's stored type to one line of at most 128 characters; this package does not deliver or check that bound. Payloads are delivered as received: a notification's `value` and an item's `data` get no length or newline check.
 
 `subscribe`, `onStatus` and `watch` after `close` throw `AtError('closed')` synchronously; the other calls reject.
 

@@ -19,9 +19,12 @@ function text(value: unknown, field: string): string {
  * `cached` key cannot be sent as a notification, and throws `AtError`
  * `invalid_argument` naming the flag; a key part that is empty or not a
  * string — the name, `sharedWith`, `sharedBy` or a used `namespace` — throws
- * it naming the field.
+ * it naming the field; a [key] that is not an object throws it naming `AtKey`.
  */
 export function toKeyText(key: AtKey, namespace: string, atSign: string): string {
+  if (typeof key !== 'object' || key === null || Array.isArray(key)) {
+    throw new AtError('AtKey: must be an object', 'invalid_argument');
+  }
   if (key.public === true) {
     throw new AtError('AtKey.public: cannot be sent in a notification', 'invalid_argument');
   }

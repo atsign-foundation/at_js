@@ -109,6 +109,9 @@ describe('parseKey', () => {
     expect(parseKey('@Bob:note.WAVI@Alice', 'WAVI')).toEqual({
       key: 'note', namespace: 'wavi', sharedWith: '@bob', sharedBy: '@alice',
     });
+    expect(parseKey('note.OTHER@alice', 'wavi')).toEqual({
+      key: 'note', namespace: 'other', sharedBy: '@alice',
+    });
   });
 
   it('rejects malformed keys', () => {
@@ -119,8 +122,26 @@ describe('parseKey', () => {
   });
 
   it('names the expected shape without echoing the input', () => {
-    for (const text of ['@secret.wavi', 'secret@', 'sec@ret@x']) {
-      expect(() => parseKey(text)).toThrow(expect.objectContaining({ code: 'bad_key', message: expect.not.stringContaining('ecret') }));
+    const cases: Array<[string, string]> = [
+      ['@secret.wavi', 'key recipient: must be @atSign: before the key'],
+      ['secret@', 'key owner: must be @atSign after the key'],
+      ['sec@ret@x', 'key name: must be non-empty with at most one @atSign suffix'],
+    ];
+    for (const [text, message] of cases) {
+      const error = badKey(text);
+      expect(error.code).toBe('bad_key');
+      expect(error.message).toBe(message);
+      expect(error.message).not.toContain(text);
     }
   });
+
+  function badKey(text: string): AtError {
+    try {
+      parseKey(text);
+    } catch (error) {
+      expect(error).toBeInstanceOf(AtError);
+      return error as AtError;
+    }
+    throw new Error('expected a refusal');
+  }
 });

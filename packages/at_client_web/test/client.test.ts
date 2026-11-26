@@ -151,6 +151,15 @@ describe('create', () => {
     expect(loader).not.toHaveBeenCalled();
   });
 
+  it('a passkey value other than true rejects invalid_argument before loading the bridge', async () => {
+    for (const bad of [false, 'yes', 1]) {
+      const error = await rejection(AtClient.create({ ...opts, passkey: bad } as never));
+      expect(error.code).toBe('invalid_argument');
+      expect(error.message).toBe('AtClientOptions.passkey: must be true when given');
+    }
+    expect(loader).not.toHaveBeenCalled();
+  });
+
   it('keys with passkey true reject invalid_argument before loading the bridge', async () => {
     const error = await rejection(
       AtClient.create({
@@ -178,6 +187,15 @@ describe('create', () => {
       const error = await rejection(AtClient.create({ ...opts, namespace: bad } as never));
       expect(error.code).toBe('invalid_argument');
       expect(error.message).toBe('AtClientOptions.namespace: must be a non-empty string');
+    }
+    expect(loader).not.toHaveBeenCalled();
+  });
+
+  it('a missing or non-string atSign rejects invalid_argument before loading the bridge', async () => {
+    for (const bad of [undefined, null, 5, '']) {
+      const error = await rejection(AtClient.create({ ...opts, atSign: bad } as never));
+      expect(error.code).toBe('invalid_argument');
+      expect(error.message).toBe('AtClientOptions.atSign: must be a non-empty string');
     }
     expect(loader).not.toHaveBeenCalled();
   });
@@ -315,13 +333,13 @@ describe('session calls', () => {
     expect(await client.notify({ key: 'x', sharedWith: '@alice' }, 'ping')).toBe(false);
   });
 
-  it('notify keeps an explicit namespace and owner, lowercasing the namespace', async () => {
+  it('notify keeps an explicit namespace and owner', async () => {
     const client = await AtClient.create(opts);
     await client.notify({ key: 'k', namespace: 'Other', sharedWith: '@bob', sharedBy: '@carol' }, 'v');
     expect(fake.session.notify).toHaveBeenCalledWith('@bob:k.other@carol', 'v');
   });
 
-  it('notify sends no namespace for a key marked noNamespace, ignoring a given one', async () => {
+  it('notify with noNamespace sends the key with no namespace', async () => {
     const client = await AtClient.create(opts);
     await client.notify(
       { key: 'k', namespace: 'other', sharedWith: '@bob', noNamespace: true },
@@ -330,7 +348,7 @@ describe('session calls', () => {
     expect(fake.session.notify).toHaveBeenCalledWith('@bob:k@alice', 'v');
   });
 
-  it('notify refuses a public or cached key invalid_argument naming the flag, sending nothing', async () => {
+  it('notify with a public or cached key rejects invalid_argument naming the flag and sends nothing', async () => {
     const client = await AtClient.create(opts);
     const cases: Array<[AtKey, string]> = [
       [{ key: 'k', sharedWith: '@bob', public: true }, 'AtKey.public'],
@@ -340,6 +358,26 @@ describe('session calls', () => {
       const error = await rejection(client.notify(key, 'v'));
       expect(error.code).toBe('invalid_argument');
       expect(error.message).toContain(field);
+    }
+    expect(fake.session.notify).not.toHaveBeenCalled();
+  });
+
+  it('notify with an empty or non-string key part rejects invalid_argument naming the field and sends nothing', async () => {
+    const client = await AtClient.create(opts);
+    const cases: Array<[AtKey, string]> = [
+      [{ key: '' }, 'AtKey.key'],
+      [{ key: 5 } as never, 'AtKey.key'],
+      [{ key: 'k', sharedWith: '' }, 'AtKey.sharedWith'],
+      [{ key: 'k', sharedWith: 5 } as never, 'AtKey.sharedWith'],
+      [{ key: 'k', sharedBy: '' }, 'AtKey.sharedBy'],
+      [{ key: 'k', sharedBy: 5 } as never, 'AtKey.sharedBy'],
+      [{ key: 'k', namespace: '' }, 'AtKey.namespace'],
+      [{ key: 'k', namespace: 5 } as never, 'AtKey.namespace'],
+    ];
+    for (const [key, field] of cases) {
+      const error = await rejection(client.notify(key, 'v'));
+      expect(error.code).toBe('invalid_argument');
+      expect(error.message).toBe(`${field}: must be a non-empty string`);
     }
     expect(fake.session.notify).not.toHaveBeenCalled();
   });
@@ -576,6 +614,13 @@ describe('status', () => {
     expect(fake.session.notify).toHaveBeenCalledWith('@bob:k.tally@alice', 'v');
   });
 
+  it('create lowercases the session atSign for the client but not for the bridge', async () => {
+    const client = await AtClient.create({ ...opts, atSign: '@Alice' });
+    expect(bridge.create.mock.calls.at(-1)![0].atSign).toBe('@Alice');
+    await client.notify({ key: 'k', sharedWith: '@bob' }, 'v');
+    expect(fake.session.notify).toHaveBeenCalledWith('@bob:k.tally@alice', 'v');
+  });
+
   it('every closed rejection from the client says the session is closed', async () => {
     const client = await AtClient.create(opts);
     await client.close();
@@ -596,6 +641,9 @@ describe('status', () => {
     expect((await rejection(client.pendingEnrollments())).code).toBe('closed');
     expect((await rejection(client.approve('id'))).code).toBe('closed');
     expect((await rejection(client.deny('id'))).code).toBe('closed');
+    for (const method of ['notify', 'otp', 'pendingEnrollments', 'approve', 'deny'] as const) {
+      expect(fake.session[method]).not.toHaveBeenCalled();
+    }
   });
 
   it('subscribe lowercases namespace in the default regex', async () => {
@@ -724,7 +772,9 @@ describe('collection', () => {
     const events = tasks.watch()[Symbol.asyncIterator]();
     const ancestry = [{ id: 'p1', subName: 'comments', owner: null }];
     fake.col.watchers[0]!.onEvent({ type: 'subItemUpdated', id: 'c1', owner: '@alice', ancestry });
-    expect((await events.next()).value).toEqual({ type: 'subItemUpdated', id: 'c1', owner: '@alice', ancestry });
+    const event = (await events.next()).value;
+    expect(event).toEqual({ type: 'subItemUpdated', id: 'c1', owner: '@alice', ancestry });
+    expect((event as { ancestry: unknown }).ancestry).toBe(ancestry);
   });
 
   it('watch errors reject one next() and the stream carries on', async () => {

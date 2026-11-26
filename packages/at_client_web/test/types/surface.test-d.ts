@@ -13,8 +13,17 @@ export const passkeyCreate: Promise<impl.AtClient> = AtClient.create({
   rpId: 'example.com',
   rpName: 'Tally',
 });
+export const keysCreate: Promise<impl.AtClient> = AtClient.create({
+  atSign: '@alice',
+  namespace: 'tally',
+  keys: '{"@alice":{}}',
+});
+// @ts-expect-error a .atKeys document or a passkey is required
+void AtClient.create({ atSign: '@alice', namespace: 'tally' });
 // @ts-expect-error passkey is true when given, never false
 void AtClient.create({ atSign: '@alice', namespace: 'tally', passkey: false });
+// @ts-expect-error keys cannot be combined with passkey: true
+void AtClient.create({ atSign: '@alice', namespace: 'tally', keys: '{}', passkey: true, rpId: 'example.com', rpName: 'Tally' });
 export const status: impl.ConnectionStatus = client.status;
 export const off: () => void = client.onStatus((next: impl.ConnectionStatus) => void next);
 
@@ -31,6 +40,7 @@ export const updated: Promise<impl.Item<{ n: number }>> = collection.update('id'
 export const shared: Promise<impl.Item<{ n: number }>> = collection.share('id', ['@b']);
 export const removed: Promise<void> = collection.remove('id');
 export const watched: AsyncIterable<impl.CollectionEvent<{ n: number }>> = collection.watch();
+export const ancestor: impl.Ancestor = { id: 'p1', subName: 'comments', owner: null };
 
 // @ts-expect-error data must be an object
 void client.collection<string>('x', { type: 't' });

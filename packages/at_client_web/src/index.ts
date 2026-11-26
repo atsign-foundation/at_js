@@ -24,28 +24,43 @@ export type {
   WhereOp,
 } from './collection.js';
 
-/** What `AtClient.create` takes to name the atSign, its keys and its scope. */
-export interface AtClientOptions {
-  /** The atSign to open, with its leading `@`. */
+/** The fields every `AtClient.create` takes to name the atSign and its scope. */
+interface AtClientSharedOptions {
+  /** The atSign to open, such as `@alice`. */
   atSign: string;
   /** Required: it scopes every key this client reads and writes, and names the enrollment's app. */
   namespace?: string;
-  /**
-   * The atSign's `.atKeys` document, as its JSON text or as an object. It
-   * must be the plain document: a keys file whose fields are encrypted
-   * with the atSign's self-encryption key is not readable in a browser.
-   * Required unless `passkey` is `true`.
-   */
-  keys?: string | Record<string, unknown>;
-  /** Sign in with a platform passkey instead of a `.atKeys` document; requires `rpId` and `rpName`. */
-  passkey?: true;
-  /** The relying party id the passkey is scoped to; required with `passkey: true`. */
-  rpId?: string;
-  /** The relying party name the browser shows when it asks for the passkey; required with `passkey: true`. */
-  rpName?: string;
   /** The atDirectory to look atSigns up at, `host` or `host:port` (port 64 by default); `root.atsign.org` when left out. */
   rootDomain?: string;
 }
+
+/**
+ * What `AtClient.create` takes to name the atSign, its keys and its scope:
+ * a `.atKeys` document, or a platform passkey — exactly one of the two.
+ */
+export type AtClientOptions = AtClientSharedOptions &
+  (
+    | {
+        /**
+         * The atSign's `.atKeys` document, as its JSON text or as an object. It
+         * must be the plain document: a keys file whose fields are encrypted
+         * with the atSign's self-encryption key is not readable in a browser.
+         */
+        keys: string | Record<string, unknown>;
+        /** Cannot be combined with a `.atKeys` document. */
+        passkey?: never;
+      }
+    | {
+        /** Sign in with a platform passkey instead of a `.atKeys` document; requires `rpId` and `rpName`. */
+        passkey: true;
+        /** The relying party id the passkey is scoped to. */
+        rpId: string;
+        /** The relying party name the browser shows when it asks for the passkey. */
+        rpName: string;
+        /** Cannot be combined with `passkey: true`. */
+        keys?: never;
+      }
+  );
 
 /** A key's parts; the client composes and parses the wire form (`@with:key.namespace@by`). */
 export interface AtKey {
@@ -117,6 +132,9 @@ function requireSecureBrowser(): void {
 function bridgeOptions(opts: AtClientOptions): BridgeOptions {
   if (opts === null || typeof opts !== 'object' || Array.isArray(opts)) {
     throw new AtError('AtClientOptions: must be an object', 'invalid_argument');
+  }
+  if (typeof opts.atSign !== 'string' || opts.atSign === '') {
+    throw new AtError('AtClientOptions.atSign: must be a non-empty string', 'invalid_argument');
   }
   if (typeof opts.namespace !== 'string' || opts.namespace === '') {
     throw new AtError('AtClientOptions.namespace: must be a non-empty string', 'invalid_argument');

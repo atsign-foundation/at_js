@@ -1,6 +1,14 @@
 import { AtError } from './error.js';
 import type { AtKey } from './index.js';
 
+/** [value] when it is a non-empty string; throws `invalid_argument` naming [field] otherwise. */
+function text(value: unknown, field: string): string {
+  if (typeof value !== 'string' || value === '') {
+    throw new AtError(`AtKey.${field}: must be a non-empty string`, 'invalid_argument');
+  }
+  return value;
+}
+
 /**
  * The atKey text `notify` takes for [key]:
  * `[@recipient:]name[.namespace]@owner`.
@@ -9,7 +17,9 @@ import type { AtKey } from './index.js';
  * off when [key.noNamespace] is true, and a namespace given beside that flag
  * is ignored. The owner is [key.sharedBy], else [atSign]. A `public` or
  * `cached` key cannot be sent as a notification, and throws `AtError`
- * `invalid_argument` naming the flag.
+ * `invalid_argument` naming the flag; a key part that is empty or not a
+ * string — the name, `sharedWith`, `sharedBy` or a used `namespace` — throws
+ * it naming the field.
  */
 export function toKeyText(key: AtKey, namespace: string, atSign: string): string {
   if (key.public === true) {
@@ -18,10 +28,15 @@ export function toKeyText(key: AtKey, namespace: string, atSign: string): string
   if (key.cached === true) {
     throw new AtError('AtKey.cached: cannot be sent in a notification', 'invalid_argument');
   }
-  const recipient = key.sharedWith === undefined ? '' : `${key.sharedWith}:`;
-  const name =
-    key.noNamespace === true ? key.key : `${key.key}.${(key.namespace ?? namespace).toLowerCase()}`;
-  return `${recipient}${name}${key.sharedBy ?? atSign}`;
+  const name = text(key.key, 'key');
+  const sharedWith = key.sharedWith === undefined ? undefined : text(key.sharedWith, 'sharedWith');
+  const sharedBy = key.sharedBy === undefined ? undefined : text(key.sharedBy, 'sharedBy');
+  const recipient = sharedWith === undefined ? '' : `${sharedWith}:`;
+  const qualified =
+    key.noNamespace === true
+      ? name
+      : `${name}.${(key.namespace === undefined ? namespace : text(key.namespace, 'namespace')).toLowerCase()}`;
+  return `${recipient}${qualified}${sharedBy ?? atSign}`;
 }
 
 /**

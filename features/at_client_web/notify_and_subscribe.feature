@@ -30,6 +30,12 @@ Feature: notify sends to another atSign and subscribe delivers only genuine even
     Then each rejects with AtError code invalid_argument naming the flag
     And the bridge is not asked to notify
 
+  Scenario: notify with an empty or non-string key part rejects invalid_argument naming the field and sends nothing
+    Given an open session
+    When notify is called with an empty or non-string key name, sharedWith, sharedBy or namespace
+    Then each rejects with AtError code invalid_argument naming AtKey.<field>
+    And the bridge is not asked to notify
+
   Scenario: a subscription that buffers past the cap unsubscribes and rejects with overflow
     Given an open subscription the app is not reading
     When 4097 events arrive

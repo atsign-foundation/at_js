@@ -1,6 +1,8 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync, existsSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   BRIDGE_REPO,
@@ -125,6 +127,47 @@ describe('verifiedBundleSource', () => {
     writeFileSync(override, 'anything');
     expect(verifiedBundleSource({ root, env: { AT_CLIENT_WEB_BUNDLE: override }, exists: existsSync })).toBe(override);
     expect(existsSync(override)).toBe(true);
+  });
+});
+
+describe('copy-bundle script', () => {
+  const scriptsDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'scripts');
+
+  function pkg(bundle: string, pinned: string): string {
+    const root = tmp();
+    mkdirSync(join(root, 'scripts'));
+    for (const name of ['copy-bundle.mjs', 'bridge-lib.mjs']) {
+      copyFileSync(join(scriptsDir, name), join(root, 'scripts', name));
+    }
+    mkdirSync(join(root, '.bridge'));
+    writeFileSync(join(root, '.bridge', 'at_client_web.js'), bundle);
+    writeFileSync(join(root, 'bridge.ref'), JSON.stringify({ tag, sha256: sha256Hex(Buffer.from(pinned)) }));
+    return root;
+  }
+
+  function run(root: string) {
+    const env = { ...process.env };
+    delete env.AT_CLIENT_WEB_BUNDLE;
+    return spawnSync(process.execPath, [join(root, 'scripts', 'copy-bundle.mjs')], {
+      cwd: root,
+      env,
+      encoding: 'utf8',
+    });
+  }
+
+  it('copy-bundle runs the checksum check and copies a fetched bundle whose sha256 matches bridge.ref', () => {
+    const root = pkg('bundle', 'bundle');
+    const result = run(root);
+    expect(result.status).toBe(0);
+    expect(readFileSync(join(root, 'dist', 'dart', 'at_client.js'), 'utf8')).toBe('bundle');
+  });
+
+  it('copy-bundle refuses a fetched bundle whose sha256 differs and copies nothing', () => {
+    const root = pkg('tampered', 'bundle');
+    const result = run(root);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('checksum mismatch');
+    expect(existsSync(join(root, 'dist', 'dart', 'at_client.js'))).toBe(false);
   });
 });
 

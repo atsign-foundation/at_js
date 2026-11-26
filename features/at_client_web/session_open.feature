@@ -71,6 +71,12 @@ Feature: A browser opens an atSign session only where it safely can
     Then the bridge was opened with Tally
     And the notification key is under the namespace tally
 
+  Scenario: create lowercases the session atSign for the client but not for the bridge
+    Given a secure page
+    When create is called with the atSign @Alice and the client sends a notification
+    Then the bridge was opened with @Alice
+    And the notification key is under @alice
+
   Scenario: passkey create forwards the passkey options to the bridge
     Given a secure page
     When create is called with passkey true, an rpId and an rpName

@@ -128,18 +128,23 @@ function requireSecureBrowser(): void {
   }
 }
 
+/** [value] when it is a non-empty string; throws `invalid_argument` with [message] otherwise. */
+function requireString(value: unknown, message: string): string {
+  if (typeof value !== 'string' || value === '') throw new AtError(message, 'invalid_argument');
+  return value;
+}
+
 /** The bridge's options for [opts]. */
 function bridgeOptions(opts: AtClientOptions): BridgeOptions {
   if (opts === null || typeof opts !== 'object' || Array.isArray(opts)) {
     throw new AtError('AtClientOptions: must be an object', 'invalid_argument');
   }
-  if (typeof opts.atSign !== 'string' || opts.atSign === '') {
-    throw new AtError('AtClientOptions.atSign: must be a non-empty string', 'invalid_argument');
-  }
-  if (typeof opts.namespace !== 'string' || opts.namespace === '') {
-    throw new AtError('AtClientOptions.namespace: must be a non-empty string', 'invalid_argument');
-  }
-  const options: BridgeOptions = { atSign: opts.atSign, namespace: opts.namespace };
+  const atSign = requireString(opts.atSign, 'AtClientOptions.atSign: must be a non-empty string');
+  const namespace = requireString(
+    opts.namespace,
+    'AtClientOptions.namespace: must be a non-empty string',
+  );
+  const options: BridgeOptions = { atSign, namespace };
   if (opts.passkey !== undefined && opts.passkey !== true) {
     throw new AtError('AtClientOptions.passkey: must be true when given', 'invalid_argument');
   }
@@ -147,21 +152,15 @@ function bridgeOptions(opts: AtClientOptions): BridgeOptions {
     if (opts.keys !== undefined) {
       throw new AtError('AtClientOptions.keys: cannot be combined with passkey: true', 'invalid_argument');
     }
-    if (typeof opts.rpId !== 'string' || opts.rpId === '') {
-      throw new AtError(
-        'AtClientOptions.rpId: must be a non-empty string when passkey is true',
-        'invalid_argument',
-      );
-    }
-    if (typeof opts.rpName !== 'string' || opts.rpName === '') {
-      throw new AtError(
-        'AtClientOptions.rpName: must be a non-empty string when passkey is true',
-        'invalid_argument',
-      );
-    }
     options.passkey = true;
-    options.rpId = opts.rpId;
-    options.rpName = opts.rpName;
+    options.rpId = requireString(
+      opts.rpId,
+      'AtClientOptions.rpId: must be a non-empty string when passkey is true',
+    );
+    options.rpName = requireString(
+      opts.rpName,
+      'AtClientOptions.rpName: must be a non-empty string when passkey is true',
+    );
   } else {
     const { keys } = opts;
     if (typeof keys === 'string') options.keys = keys;

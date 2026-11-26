@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import {
   BRIDGE_ASSET,
   BRIDGE_REPO,
-  BRIDGE_SIGNER_WORKFLOW,
+  attestationArgs,
   parseBridgeRef,
   verifyDownload,
 } from './bridge-lib.mjs';
@@ -27,7 +27,7 @@ function download(tag) {
 }
 
 function attest() {
-  gh('attestation', 'verify', file, '-R', BRIDGE_REPO, '--signer-workflow', BRIDGE_SIGNER_WORKFLOW);
+  gh(...attestationArgs(file));
 }
 
 try {

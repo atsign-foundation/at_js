@@ -1,5 +1,5 @@
 import { AtError, toAtError, type AtErrorCode } from './error.js';
-import { parseKey, toBridgeKey } from './key.js';
+import { parseKey, toKeyText } from './key.js';
 import { openCollection, type Collection } from './collection.js';
 import {
   loadBridge,
@@ -24,21 +24,48 @@ export type {
   WhereOp,
 } from './collection.js';
 
-/** What `AtClient.create` takes to name the atSign, its keys and its scope. */
-export interface AtClientOptions {
-  /** The atSign to open, with its leading `@`. */
+/** The fields every `AtClient.create` takes to name the atSign and its scope. */
+interface AtClientSharedOptions {
+  /** The atSign to open, such as `@alice`. */
   atSign: string;
-  /** Required: it scopes every key this client reads and writes, and names the enrollment's app. */
-  namespace?: string;
   /**
-   * The atSign's `.atKeys` document, as its JSON text or as an object. It
-   * must be the plain document: a keys file whose fields are encrypted
-   * with the atSign's self-encryption key is not readable in a browser.
+   * Required at runtime: it scopes every key this client reads and writes, and
+   * names the enrollment's app; `bridgeOptions` rejects a missing or empty one
+   * with `invalid_argument`. Optional in the type only so callers get that
+   * named error instead of a type error.
    */
-  keys: string | Record<string, unknown>;
+  namespace?: string;
   /** The atDirectory to look atSigns up at, `host` or `host:port` (port 64 by default); `root.atsign.org` when left out. */
   rootDomain?: string;
 }
+
+/**
+ * What `AtClient.create` takes to name the atSign, its keys and its scope:
+ * a `.atKeys` document, or a platform passkey — exactly one of the two.
+ */
+export type AtClientOptions = AtClientSharedOptions &
+  (
+    | {
+        /**
+         * The atSign's `.atKeys` document, as its JSON text or as an object. It
+         * must be the plain document: a keys file whose fields are encrypted
+         * with the atSign's self-encryption key is not readable in a browser.
+         */
+        keys: string | Record<string, unknown>;
+        /** Cannot be combined with a `.atKeys` document. */
+        passkey?: never;
+      }
+    | {
+        /** Sign in with a platform passkey instead of a `.atKeys` document; requires `rpId` and `rpName`. */
+        passkey: true;
+        /** The relying party id the passkey is scoped to. */
+        rpId: string;
+        /** The relying party name the browser shows when it asks for the passkey. */
+        rpName: string;
+        /** Cannot be combined with `passkey: true`. */
+        keys?: never;
+      }
+  );
 
 /** A key's parts; the client composes and parses the wire form (`@with:key.namespace@by`). */
 export interface AtKey {
@@ -50,11 +77,11 @@ export interface AtKey {
   sharedWith?: string;
   /** Defaults to the client's `namespace`. */
   namespace?: string;
-  /** A public key (`public:`); set on the keys a `subscribe` event carries. */
+  /** A public key (`public:`); set on the keys a `subscribe` event carries and refused by `notify`. */
   public?: boolean;
-  /** A key cached from another atSign (`cached:`); set on the keys a `subscribe` event carries. */
+  /** A key cached from another atSign (`cached:`); set on the keys a `subscribe` event carries and refused by `notify`. */
   cached?: boolean;
-  /** The key has no namespace; set on the keys a `subscribe` event carries. */
+  /** The key has no namespace; set on the keys a `subscribe` event carries, and honored by `notify`. */
   noNamespace?: boolean;
 }
 
@@ -106,17 +133,48 @@ function requireSecureBrowser(): void {
   }
 }
 
+/** [value] when it is a non-empty string; throws `invalid_argument` with [message] otherwise. */
+function requireString(value: unknown, message: string): string {
+  if (typeof value !== 'string' || value === '') throw new AtError(message, 'invalid_argument');
+  return value;
+}
+
 /** The bridge's options for [opts]. */
 function bridgeOptions(opts: AtClientOptions): BridgeOptions {
-  if (!opts.namespace) throw new AtError('AtClientOptions.namespace is required', 'bad_key');
-  if (opts.keys === undefined || opts.keys === null) {
-    throw new AtError('AtClientOptions.keys is required', 'bad_key');
+  if (opts === null || typeof opts !== 'object' || Array.isArray(opts)) {
+    throw new AtError('AtClientOptions: must be an object', 'invalid_argument');
   }
-  const options: BridgeOptions = {
-    atSign: opts.atSign,
-    namespace: opts.namespace,
-    keys: opts.keys,
-  };
+  const atSign = requireString(opts.atSign, 'AtClientOptions.atSign: must be a non-empty string');
+  const namespace = requireString(
+    opts.namespace,
+    'AtClientOptions.namespace: must be a non-empty string',
+  );
+  const options: BridgeOptions = { atSign, namespace };
+  if (opts.passkey !== undefined && opts.passkey !== true) {
+    throw new AtError('AtClientOptions.passkey: must be true when given', 'invalid_argument');
+  }
+  if (opts.passkey === true) {
+    if (opts.keys !== undefined) {
+      throw new AtError('AtClientOptions.keys: cannot be combined with passkey: true', 'invalid_argument');
+    }
+    options.passkey = true;
+    options.rpId = requireString(
+      opts.rpId,
+      'AtClientOptions.rpId: must be a non-empty string when passkey is true',
+    );
+    options.rpName = requireString(
+      opts.rpName,
+      'AtClientOptions.rpName: must be a non-empty string when passkey is true',
+    );
+  } else {
+    const { keys } = opts;
+    if (typeof keys === 'string') options.keys = keys;
+    else if (typeof keys === 'object' && keys !== null && !Array.isArray(keys)) {
+      options.keys = keys as Record<string, unknown>;
+    } else {
+      throw new AtError('AtClientOptions.keys: must be an .atKeys JSON object or its text', 'invalid_argument');
+    }
+  }
   if (opts.rootDomain !== undefined) options.rootDomain = opts.rootDomain;
   return options;
 }
@@ -147,14 +205,15 @@ export class AtClient {
   private constructor(
     private readonly session: BridgeSession,
     private readonly namespace: string,
+    private readonly atSign: string,
   ) {}
 
-  /** Opens the session for [opts]: the atSign, its `.atKeys` and the namespace. */
+  /** Opens the session for [opts]: the atSign and namespace, from its `.atKeys` document or a passkey. */
   static async create(opts: AtClientOptions): Promise<AtClient> {
     requireSecureBrowser();
     const options = bridgeOptions(opts);
     const session = await bridged(async () => (await loadBridge()).create(options));
-    return new AtClient(session, options.namespace);
+    return new AtClient(session, options.namespace.toLowerCase(), options.atSign.toLowerCase());
   }
 
   /**
@@ -168,8 +227,7 @@ export class AtClient {
     name: string,
     options: { type: string; eventSource?: 'data' | 'notifs' | 'both'; expiration?: number },
   ): Promise<Collection<T>> {
-    return bridged(async () => {
-      this.assertOpen();
+    return this.bridgedOpen(async () => {
       const opened = await this.session.collection(name, options);
       return openCollection<T>(opened, {
         assertOpen: () => this.assertOpen(),
@@ -187,6 +245,9 @@ export class AtClient {
   /** Calls [listener] with each later change of `status`; returns the function that stops it. Throws `AtError('closed')` after `close()`. */
   onStatus(listener: (status: ConnectionStatus) => void): () => void {
     this.assertOpen();
+    if (typeof listener !== 'function') {
+      throw new AtError('onStatus listener must be a function', 'invalid_argument');
+    }
     try {
       const off = this.session.onStatus((status) => listener(status as ConnectionStatus));
       if (typeof off !== 'function') throw off;
@@ -196,9 +257,20 @@ export class AtClient {
     }
   }
 
-  /** Sends `value` to the key's `sharedWith` atSign as a notification. */
+  /**
+   * Sends `value` to the key's `sharedWith` atSign as a notification,
+   * resolving true once it was delivered.
+   *
+   * The key is sent as atKey text, `[@recipient:]name[.namespace]@owner`:
+   * the namespace is the key's own or the session's unless `noNamespace` is
+   * set, and the owner is the key's `sharedBy` or the session's atSign. A
+   * `public` or `cached` key cannot be sent and rejects `invalid_argument`
+   * naming the flag.
+   */
   notify(key: AtKey, value: string): Promise<boolean> {
-    return bridged(() => this.session.notify(toBridgeKey(key, this.namespace), value));
+    return this.bridgedOpen(() =>
+      this.session.notify(toKeyText(key, this.namespace, this.atSign), value),
+    );
   }
 
   /**
@@ -221,7 +293,13 @@ export class AtClient {
     try {
       const subscribed = this.session.subscribe(
         regex ?? `\\.${this.namespace.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}@`,
-        (notification) => queue.push(this.event(notification)),
+        (notification) => {
+          try {
+            queue.push(this.event(notification));
+          } catch (error) {
+            queue.fail(toAtError(error));
+          }
+        },
         (error) => queue.fail(toAtError(error)),
       );
       if (typeof subscribed !== 'function') throw subscribed;
@@ -234,29 +312,37 @@ export class AtClient {
   }
 
   private assertOpen(): void {
-    if (this.closed) throw new AtError('the client is closed', 'closed');
+    if (this.closed) throw new AtError('the session is closed', 'closed');
+  }
+
+  /** `bridged`, rejecting with `closed` first when the client is closed. */
+  private bridgedOpen<R>(call: () => Promise<R>): Promise<R> {
+    return bridged(() => {
+      this.assertOpen();
+      return call();
+    });
   }
 
   /** A one-time code a new device quotes to ask for enrollment. Needs `__manage`. */
   otp(): Promise<string> {
-    return bridged(() => this.session.otp());
+    return this.bridgedOpen(() => this.session.otp());
   }
 
   /** The enrollment requests awaiting a decision. Needs `__manage`. */
   pendingEnrollments(): Promise<PendingEnrollment[]> {
-    return bridged(async () =>
+    return this.bridgedOpen(async () =>
       (await this.session.pendingEnrollments()).map((e: BridgeEnrollment) => ({ ...e })),
     );
   }
 
   /** Approves the pending request [id] for what it asked for. Needs `__manage`. */
   async approve(id: string): Promise<void> {
-    await bridged(() => this.session.approve(id));
+    await this.bridgedOpen(() => this.session.approve(id));
   }
 
   /** Denies the pending request [id]. Needs `__manage`. */
   async deny(id: string): Promise<void> {
-    await bridged(() => this.session.deny(id));
+    await this.bridgedOpen(() => this.session.deny(id));
   }
 
   /** Closes the session and ends every open `subscribe` iterator; closing twice is a no-op. */

@@ -18,3 +18,28 @@ Feature: Every failure is an AtError whose code the caller branches on
     Given a bridge that rejects with each known code
     When create is called
     Then each rejects with an AtError carrying that code
+
+  Scenario: maps enrollment_conveyance_failed through unchanged
+    Given a bridge whose approve rejects with enrollment_conveyance_failed
+    When approve is called
+    Then it rejects with an AtError carrying that code and the bridge's message
+
+  Scenario: maps COLLECTION_ITEM_TOO_DEEP through unchanged
+    Given a bridge whose collection create rejects with COLLECTION_ITEM_TOO_DEEP
+    When create is called on the collection
+    Then it rejects with an AtError carrying that code
+
+  Scenario: maps invalid_argument through unchanged
+    Given a bridge whose subscribe answers with { code: 'invalid_argument', message }
+    When subscribe is called
+    Then it throws an AtError carrying that code and the bridge's message
+
+  Scenario: maps enrollment_in_flight through unchanged
+    Given a bridge whose deny rejects with enrollment_in_flight
+    When deny is called
+    Then it rejects with an AtError carrying that code and the bridge's message
+
+  Scenario: every closed rejection from the client says the session is closed
+    Given a closed client
+    When otp, subscribe and onStatus are called
+    Then each fails with AtError code closed and the message the session is closed

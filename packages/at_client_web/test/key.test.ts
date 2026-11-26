@@ -1,35 +1,54 @@
 import { describe, expect, it } from 'vitest';
-import { parseKey, toBridgeKey } from '../src/key.js';
+import { parseKey, toKeyText } from '../src/key.js';
+import { AtError } from '../src/error.js';
 
-describe('toBridgeKey', () => {
-  it('defaults the namespace and drops absent fields', () => {
-    expect(toBridgeKey({ key: 'note' }, 'wavi')).toEqual({ key: 'note', namespace: 'wavi' });
+describe('toKeyText', () => {
+  const self = '@alice';
+
+  it('composes the recipient, key, session namespace and session atSign', () => {
+    expect(toKeyText({ key: 'note', sharedWith: '@bob' }, 'wavi', self)).toBe('@bob:note.wavi@alice');
   });
 
-  it('keeps an explicit namespace, sharedWith and sharedBy', () => {
+  it('keeps an explicit namespace, lowercased, and an explicit owner', () => {
     expect(
-      toBridgeKey({ key: 'k', namespace: 'tally', sharedWith: '@bob', sharedBy: '@alice' }, 'wavi'),
-    ).toEqual({ key: 'k', namespace: 'tally', sharedWith: '@bob', sharedBy: '@alice' });
+      toKeyText({ key: 'k', namespace: 'Other', sharedWith: '@bob', sharedBy: '@carol' }, 'wavi', self),
+    ).toBe('@bob:k.other@carol');
   });
 
-  it('does not carry undefined properties onto the bridge object', () => {
-    const bridgeKey = toBridgeKey({ key: 'k', sharedWith: undefined }, 'wavi');
-    expect(Object.keys(bridgeKey).sort()).toEqual(['key', 'namespace']);
+  it('adds no namespace, and ignores a given one, when noNamespace is true', () => {
+    expect(toKeyText({ key: 'k', sharedWith: '@bob', noNamespace: true }, 'wavi', self)).toBe('@bob:k@alice');
+    expect(
+      toKeyText({ key: 'k', namespace: 'other', sharedWith: '@bob', noNamespace: true }, 'wavi', self),
+    ).toBe('@bob:k@alice');
   });
-});
 
-describe('keys to the bridge', () => {
-  it('sends the flags and no default namespace for a key that had none', () => {
-    expect(toBridgeKey(parseKey('public:plain@alice', 'wavi'), 'wavi')).toEqual({
-      key: 'plain', sharedBy: '@alice', public: true, noNamespace: true,
+  it('leaves off a recipient that is not given, for the bridge to refuse', () => {
+    expect(toKeyText({ key: 'k' }, 'wavi', self)).toBe('k.wavi@alice');
+  });
+
+  it('refuses a public key, naming the flag', () => {
+    expect(refusal({ key: 'k', sharedWith: '@bob', public: true })).toMatchObject({
+      code: 'invalid_argument',
+      message: 'AtKey.public: cannot be sent in a notification',
     });
   });
 
-  it('sends public and cached through', () => {
-    expect(toBridgeKey({ key: 'k', public: true, cached: true }, 'wavi')).toEqual({
-      key: 'k', namespace: 'wavi', public: true, cached: true,
+  it('refuses a cached key, naming the flag', () => {
+    expect(refusal({ key: 'k', sharedWith: '@bob', cached: true })).toMatchObject({
+      code: 'invalid_argument',
+      message: 'AtKey.cached: cannot be sent in a notification',
     });
   });
+
+  function refusal(key: Parameters<typeof toKeyText>[0]): AtError {
+    try {
+      toKeyText(key, 'wavi', self);
+    } catch (error) {
+      expect(error).toBeInstanceOf(AtError);
+      return error as AtError;
+    }
+    throw new Error('expected a refusal');
+  }
 });
 
 describe('parseKey', () => {
@@ -75,7 +94,54 @@ describe('parseKey', () => {
     });
   });
 
+  it('treats a trailing dot as no namespace', () => {
+    expect(parseKey('note.')).toEqual({ key: 'note.', noNamespace: true });
+    expect(parseKey('@bob:note.@alice')).toEqual({
+      key: 'note.', sharedWith: '@bob', sharedBy: '@alice', noNamespace: true,
+    });
+  });
+
   it('accepts a string with no owner', () => {
     expect(parseKey('rpc.req.1.tally', 'tally')).toEqual({ key: 'rpc.req.1', namespace: 'tally' });
   });
+
+  it('canonicalizes atSigns and namespaces to lowercase', () => {
+    expect(parseKey('@Bob:note.WAVI@Alice', 'WAVI')).toEqual({
+      key: 'note', namespace: 'wavi', sharedWith: '@bob', sharedBy: '@alice',
+    });
+    expect(parseKey('note.OTHER@alice', 'wavi')).toEqual({
+      key: 'note', namespace: 'other', sharedBy: '@alice',
+    });
+  });
+
+  it('rejects malformed keys', () => {
+    expect(() => parseKey('@bob.wavi')).toThrow('key recipient: must be @atSign: before the key');
+    expect(() => parseKey('note@')).toThrow('key owner: must be @atSign after the key');
+    expect(() => parseKey('a@bob@alice')).toThrow('key name: must be non-empty with at most one @atSign suffix');
+    expect(() => parseKey('@bob:@alice')).toThrow('key name: must be non-empty with at most one @atSign suffix');
+  });
+
+  it('names the expected shape without echoing the input', () => {
+    const cases: Array<[string, string]> = [
+      ['@secret.wavi', 'key recipient: must be @atSign: before the key'],
+      ['secret@', 'key owner: must be @atSign after the key'],
+      ['sec@ret@x', 'key name: must be non-empty with at most one @atSign suffix'],
+    ];
+    for (const [text, message] of cases) {
+      const error = badKey(text);
+      expect(error.code).toBe('bad_key');
+      expect(error.message).toBe(message);
+      expect(error.message).not.toContain(text);
+    }
+  });
+
+  function badKey(text: string): AtError {
+    try {
+      parseKey(text);
+    } catch (error) {
+      expect(error).toBeInstanceOf(AtError);
+      return error as AtError;
+    }
+    throw new Error('expected a refusal');
+  }
 });

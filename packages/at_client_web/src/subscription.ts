@@ -3,6 +3,8 @@ import { AtError } from './error.js';
 /** The most events and stream errors a subscription buffers for an app that is not consuming them. */
 export const MAX_BUFFERED_EVENTS = 4096;
 
+type QueueEntry<T> = { ok: true; value: T } | { ok: false; error: unknown };
+
 /**
  * A buffer of at most `MAX_BUFFERED_EVENTS` events and errors together, read as an async iterator.
  * `end()` and `return()` finish it: waiting readers settle done, the buffer is
@@ -13,12 +15,11 @@ export const MAX_BUFFERED_EVENTS = 4096;
  * the stream; unread errors count against the same cap.
  */
 export class EventQueue<T> implements AsyncIterableIterator<T> {
-  private readonly buffer: T[] = [];
+  private readonly entries: QueueEntry<T>[] = [];
   private waiters: Array<{
     resolve: (result: IteratorResult<T>) => void;
     reject: (error: unknown) => void;
   }> = [];
-  private failures: unknown[] = [];
   private done = false;
   private overflowed = false;
 
@@ -28,13 +29,8 @@ export class EventQueue<T> implements AsyncIterableIterator<T> {
     if (this.done) return;
     const waiter = this.waiters.shift();
     if (waiter) waiter.resolve({ value, done: false });
-    else if (this.pending < MAX_BUFFERED_EVENTS) this.buffer.push(value);
+    else if (this.entries.length < MAX_BUFFERED_EVENTS) this.entries.push({ ok: true, value });
     else this.overflow();
-  }
-
-  /** Events and failures a reader has not taken yet. */
-  private get pending(): number {
-    return this.buffer.length + this.failures.length;
   }
 
   private overflow(): void {
@@ -47,15 +43,14 @@ export class EventQueue<T> implements AsyncIterableIterator<T> {
     if (this.done) return;
     const waiter = this.waiters.shift();
     if (waiter) waiter.reject(error);
-    else if (this.pending < MAX_BUFFERED_EVENTS) this.failures.push(error);
+    else if (this.entries.length < MAX_BUFFERED_EVENTS) this.entries.push({ ok: false, error });
     else this.overflow();
   }
 
   end(): void {
     if (this.done) return;
     this.done = true;
-    this.buffer.length = 0;
-    this.failures = [];
+    this.entries.length = 0;
     const waiters = this.waiters;
     this.waiters = [];
     for (const waiter of waiters) waiter.resolve({ value: undefined, done: true });
@@ -69,9 +64,9 @@ export class EventQueue<T> implements AsyncIterableIterator<T> {
         new AtError(`the subscription buffered more than ${MAX_BUFFERED_EVENTS} events`, 'overflow'),
       );
     }
-    if (this.failures.length > 0) return Promise.reject(this.failures.shift());
-    if (this.buffer.length > 0) {
-      return Promise.resolve({ value: this.buffer.shift() as T, done: false });
+    const entry = this.entries.shift();
+    if (entry !== undefined) {
+      return entry.ok ? Promise.resolve({ value: entry.value, done: false }) : Promise.reject(entry.error);
     }
     if (this.done) return Promise.resolve({ value: undefined, done: true });
     return new Promise((resolve, reject) => this.waiters.push({ resolve, reject }));

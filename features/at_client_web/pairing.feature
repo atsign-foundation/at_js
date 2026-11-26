@@ -8,3 +8,8 @@ Feature: An approving device enrolls another browser
     When otp, pendingEnrollments, approve and deny are called
     Then each reaches the bridge, with the ids passed on
     And pendingEnrollments returns the requests as { id, appName, deviceName, namespaces }
+
+  Scenario: session async methods reject with closed after close()
+    Given a closed client
+    When notify, otp, pendingEnrollments, approve, or deny is called
+    Then each rejects with AtError code closed

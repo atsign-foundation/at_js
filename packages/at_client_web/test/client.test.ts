@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AtClient, AtError } from '../src/index.js';
+import { AtClient, AtError, type AtKey } from '../src/index.js';
 import { MAX_BUFFERED_EVENTS } from '../src/subscription.js';
 import { setBridgeLoader, type Bridge, type BridgeOptions, type BridgeSession } from '../src/loader.js';
 
@@ -117,15 +117,95 @@ describe('create', () => {
     });
   });
 
-  it('a missing namespace rejects bad_key before loading the bridge', async () => {
-    const error = await rejection(AtClient.create({ atSign: '@alice', keys }));
-    expect(error.code).toBe('bad_key');
+  it('passkey create forwards the passkey options to the bridge', async () => {
+    const client = await AtClient.create({
+      atSign: '@alice',
+      namespace: 'tally',
+      passkey: true,
+      rpId: 'example.com',
+      rpName: 'Tally',
+    });
+    expect(bridge.create).toHaveBeenCalledWith({
+      atSign: '@alice',
+      namespace: 'tally',
+      passkey: true,
+      rpId: 'example.com',
+      rpName: 'Tally',
+    });
+    expect(client).toBeInstanceOf(AtClient);
+  });
+
+  it('passkey true without rpId or rpName rejects invalid_argument naming the option', async () => {
+    const cases: Array<[Record<string, unknown>, string]> = [
+      [{ rpName: 'Tally' }, 'AtClientOptions.rpId'],
+      [{ rpId: 'example.com' }, 'AtClientOptions.rpName'],
+      [{}, 'AtClientOptions.rpId'],
+    ];
+    for (const [passkeyOptions, option] of cases) {
+      const error = await rejection(
+        AtClient.create({ atSign: '@alice', namespace: 'tally', passkey: true, ...passkeyOptions } as never),
+      );
+      expect(error.code).toBe('invalid_argument');
+      expect(error.message).toContain(option);
+    }
     expect(loader).not.toHaveBeenCalled();
   });
 
-  it('missing keys reject bad_key before loading the bridge', async () => {
-    const error = await rejection(AtClient.create({ atSign: '@alice', namespace: 'tally' } as never));
-    expect(error.code).toBe('bad_key');
+  it('a passkey value other than true rejects invalid_argument before loading the bridge', async () => {
+    for (const bad of [false, 'yes', 1]) {
+      const error = await rejection(AtClient.create({ ...opts, passkey: bad } as never));
+      expect(error.code).toBe('invalid_argument');
+      expect(error.message).toBe('AtClientOptions.passkey: must be true when given');
+    }
+    expect(loader).not.toHaveBeenCalled();
+  });
+
+  it('keys with passkey true reject invalid_argument before loading the bridge', async () => {
+    const error = await rejection(
+      AtClient.create({
+        atSign: '@alice',
+        namespace: 'tally',
+        keys,
+        passkey: true,
+        rpId: 'example.com',
+        rpName: 'Tally',
+      } as never),
+    );
+    expect(error.code).toBe('invalid_argument');
+    expect(error.message).toContain('AtClientOptions.keys');
+    expect(loader).not.toHaveBeenCalled();
+  });
+
+  it('a missing namespace rejects invalid_argument before loading the bridge', async () => {
+    const error = await rejection(AtClient.create({ atSign: '@alice', keys }));
+    expect(error.code).toBe('invalid_argument');
+    expect(loader).not.toHaveBeenCalled();
+  });
+
+  it('a non-string namespace rejects invalid_argument before loading the bridge', async () => {
+    for (const bad of [5, true, {}, ['tally'], '']) {
+      const error = await rejection(AtClient.create({ ...opts, namespace: bad } as never));
+      expect(error.code).toBe('invalid_argument');
+      expect(error.message).toBe('AtClientOptions.namespace: must be a non-empty string');
+    }
+    expect(loader).not.toHaveBeenCalled();
+  });
+
+  it('a missing or non-string atSign rejects invalid_argument before loading the bridge', async () => {
+    for (const bad of [undefined, null, 5, '']) {
+      const error = await rejection(AtClient.create({ ...opts, atSign: bad } as never));
+      expect(error.code).toBe('invalid_argument');
+      expect(error.message).toBe('AtClientOptions.atSign: must be a non-empty string');
+    }
+    expect(loader).not.toHaveBeenCalled();
+  });
+
+  it('missing or mistyped keys reject invalid_argument naming keys before loading the bridge', async () => {
+    for (const bad of [undefined, null, 5, true, [keys]]) {
+      const error = await rejection(AtClient.create({ atSign: '@alice', namespace: 'tally', keys: bad } as never));
+      expect(error.code).toBe('invalid_argument');
+      expect(error.message).toBe('AtClientOptions.keys: must be an .atKeys JSON object or its text');
+    }
     expect(loader).not.toHaveBeenCalled();
   });
 
@@ -158,16 +238,55 @@ describe('error mapping', () => {
 
   it('maps every code through unchanged', async () => {
     for (const code of [
-      'pkam_refused', 'offline', 'onboarding_incomplete', 'enrollment_denied', 'closed',
-      'unsupported', 'internal', 'bad_key',
+      'pkam_refused', 'offline', 'timeout', 'notify_failed', 'onboarding_incomplete', 'enrollment_denied',
+      'enrollment_in_flight', 'enrollment_conveyance_failed', 'closed', 'unsupported', 'internal',
+      'bad_key', 'invalid_argument',
       'COLLECTION_INVALID_ARGUMENT', 'COLLECTION_ITEM_NOT_FOUND', 'COLLECTION_ITEM_NOT_OWNER',
       'COLLECTION_ITEM_ALREADY_EXISTS', 'COLLECTION_ITEM_HAS_SUB_ITEMS', 'COLLECTION_ITEM_UNREADABLE',
-      'COLLECTION_TYPE_MISMATCH', 'COLLECTION_ITEM_WRONG_TYPE', 'COLLECTION_PARTIAL_FAILURE',
-      'COLLECTION_FAILED',
+      'COLLECTION_ITEM_TOO_DEEP', 'COLLECTION_TYPE_MISMATCH', 'COLLECTION_ITEM_WRONG_TYPE',
+      'COLLECTION_PARTIAL_FAILURE', 'COLLECTION_FAILED',
     ]) {
       bridge.create.mockRejectedValueOnce({ code, message: code });
       expect((await rejection(AtClient.create(opts))).code).toBe(code);
     }
+  });
+
+  it('maps enrollment_conveyance_failed through unchanged', async () => {
+    const client = await AtClient.create(opts);
+    fake.session.approve.mockRejectedValueOnce({ code: 'enrollment_conveyance_failed', message: 'not delivered' });
+    expect(await rejection(client.approve('e1'))).toMatchObject({
+      name: 'AtError',
+      code: 'enrollment_conveyance_failed',
+      message: 'not delivered',
+    });
+  });
+
+  it('maps invalid_argument through unchanged', async () => {
+    const client = await AtClient.create(opts);
+    fake.session.subscribe.mockReturnValueOnce({ code: 'invalid_argument', message: 'regex: must be a string' } as never);
+    expect(() => client.subscribe('x')).toThrow(
+      expect.objectContaining({ name: 'AtError', code: 'invalid_argument', message: 'regex: must be a string' }),
+    );
+  });
+
+  it('maps enrollment_in_flight through unchanged', async () => {
+    const client = await AtClient.create(opts);
+    fake.session.deny.mockRejectedValueOnce({
+      code: 'enrollment_in_flight',
+      message: 'a decision for this request is already in flight',
+    });
+    expect(await rejection(client.deny('e1'))).toMatchObject({
+      name: 'AtError',
+      code: 'enrollment_in_flight',
+      message: 'a decision for this request is already in flight',
+    });
+  });
+
+  it('maps COLLECTION_ITEM_TOO_DEEP through unchanged', async () => {
+    const client = await AtClient.create(opts);
+    const tasks = await client.collection<{ n: number }>('tasks', { type: 'task' });
+    fake.col.collection.create.mockRejectedValueOnce({ code: 'COLLECTION_ITEM_TOO_DEEP', message: 'too deep' });
+    expect(await rejection(tasks.create({ n: 1 }))).toMatchObject({ code: 'COLLECTION_ITEM_TOO_DEEP' });
   });
 
   it('maps an unknown code or a thrown Error to internal', async () => {
@@ -185,6 +304,18 @@ describe('error mapping', () => {
     expect((await rejection(client.otp())).code).toBe('closed');
   });
 
+  it('maps a notify_failed rejection through unchanged', async () => {
+    const client = await AtClient.create(opts);
+    fake.session.notify.mockRejectedValueOnce({
+      code: 'notify_failed',
+      message: 'the atServer could not reach the notification recipient',
+    });
+    expect(await rejection(client.notify({ key: 'k', sharedWith: '@bob' }, 'v'))).toMatchObject({
+      code: 'notify_failed',
+      message: 'the atServer could not reach the notification recipient',
+    });
+  });
+
   it('keeps AtError a subclass of Error with the given code', () => {
     const error = new AtError('m', 'offline');
     expect(error).toBeInstanceOf(Error);
@@ -194,15 +325,71 @@ describe('error mapping', () => {
 });
 
 describe('session calls', () => {
-  it('notify resolves what the bridge reports', async () => {
+  it('notify sends the key as atKey text with the session namespace and atSign', async () => {
     const client = await AtClient.create(opts);
     expect(await client.notify({ key: 'rpc.req.1', sharedWith: '@alice' }, 'ping')).toBe(true);
-    expect(fake.session.notify).toHaveBeenCalledWith(
-      { key: 'rpc.req.1', namespace: 'tally', sharedWith: '@alice' },
-      'ping',
-    );
+    expect(fake.session.notify).toHaveBeenCalledWith('@alice:rpc.req.1.tally@alice', 'ping');
     fake.session.notify.mockResolvedValueOnce(false);
     expect(await client.notify({ key: 'x', sharedWith: '@alice' }, 'ping')).toBe(false);
+  });
+
+  it('notify keeps an explicit namespace and owner', async () => {
+    const client = await AtClient.create(opts);
+    await client.notify({ key: 'k', namespace: 'Other', sharedWith: '@bob', sharedBy: '@carol' }, 'v');
+    expect(fake.session.notify).toHaveBeenCalledWith('@bob:k.other@carol', 'v');
+  });
+
+  it('notify with noNamespace sends the key with no namespace', async () => {
+    const client = await AtClient.create(opts);
+    await client.notify(
+      { key: 'k', namespace: 'other', sharedWith: '@bob', noNamespace: true },
+      'v',
+    );
+    expect(fake.session.notify).toHaveBeenCalledWith('@bob:k@alice', 'v');
+  });
+
+  it('notify with a public or cached key rejects invalid_argument naming the flag and sends nothing', async () => {
+    const client = await AtClient.create(opts);
+    const cases: Array<[AtKey, string]> = [
+      [{ key: 'k', sharedWith: '@bob', public: true }, 'AtKey.public'],
+      [{ key: 'k', sharedWith: '@bob', cached: true }, 'AtKey.cached'],
+    ];
+    for (const [key, field] of cases) {
+      const error = await rejection(client.notify(key, 'v'));
+      expect(error.code).toBe('invalid_argument');
+      expect(error.message).toContain(field);
+    }
+    expect(fake.session.notify).not.toHaveBeenCalled();
+  });
+
+  it('notify with an empty or non-string key part rejects invalid_argument naming the field and sends nothing', async () => {
+    const client = await AtClient.create(opts);
+    const cases: Array<[AtKey, string]> = [
+      [{ key: '' }, 'AtKey.key'],
+      [{ key: 5 } as never, 'AtKey.key'],
+      [{ key: 'k', sharedWith: '' }, 'AtKey.sharedWith'],
+      [{ key: 'k', sharedWith: 5 } as never, 'AtKey.sharedWith'],
+      [{ key: 'k', sharedBy: '' }, 'AtKey.sharedBy'],
+      [{ key: 'k', sharedBy: 5 } as never, 'AtKey.sharedBy'],
+      [{ key: 'k', namespace: '' }, 'AtKey.namespace'],
+      [{ key: 'k', namespace: 5 } as never, 'AtKey.namespace'],
+    ];
+    for (const [key, field] of cases) {
+      const error = await rejection(client.notify(key, 'v'));
+      expect(error.code).toBe('invalid_argument');
+      expect(error.message).toBe(`${field}: must be a non-empty string`);
+    }
+    expect(fake.session.notify).not.toHaveBeenCalled();
+  });
+
+  it('notify with a key that is not a plain object rejects invalid_argument naming AtKey and sends nothing', async () => {
+    const client = await AtClient.create(opts);
+    for (const key of [null, undefined, 'k', 5, true, []]) {
+      const error = await rejection(client.notify(key as never, 'v'));
+      expect(error.code).toBe('invalid_argument');
+      expect(error.message).toBe('AtKey: must be an object');
+    }
+    expect(fake.session.notify).not.toHaveBeenCalled();
   });
 });
 
@@ -406,7 +593,86 @@ describe('status', () => {
     const client = await AtClient.create(opts);
     await client.close();
     expect(() => client.onStatus(() => {})).toThrow(expect.objectContaining({ code: 'closed' }));
+    expect(() => client.onStatus(null as never)).toThrow(expect.objectContaining({ code: 'closed' }));
     expect(fake.session.onStatus).not.toHaveBeenCalled();
+  });
+
+  it('onStatus rejects non-function listeners before touching the bridge', async () => {
+    const client = await AtClient.create(opts);
+    expect(() => client.onStatus(null as never)).toThrow(expect.objectContaining({ code: 'invalid_argument' }));
+    expect(fake.session.onStatus).not.toHaveBeenCalled();
+  });
+
+  it('create(null) rejects with invalid_argument', async () => {
+    const error = await rejection(AtClient.create(null as never));
+    expect(error.code).toBe('invalid_argument');
+    expect(error.message).toBe('AtClientOptions: must be an object');
+    expect(loader).not.toHaveBeenCalled();
+  });
+
+  it('create with non-object options rejects with invalid_argument', async () => {
+    for (const bad of ['opts', 1, [opts]]) {
+      expect((await rejection(AtClient.create(bad as never))).code).toBe('invalid_argument');
+    }
+    expect(loader).not.toHaveBeenCalled();
+  });
+
+  it('create lowercases the namespace for the client but not for the bridge', async () => {
+    const client = await AtClient.create({ ...opts, namespace: 'Tally' });
+    expect(bridge.create.mock.calls.at(-1)![0].namespace).toBe('Tally');
+    await client.notify({ key: 'k', sharedWith: '@bob' }, 'v');
+    expect(fake.session.notify).toHaveBeenCalledWith('@bob:k.tally@alice', 'v');
+  });
+
+  it('create lowercases the session atSign for the client but not for the bridge', async () => {
+    const client = await AtClient.create({ ...opts, atSign: '@Alice' });
+    expect(bridge.create.mock.calls.at(-1)![0].atSign).toBe('@Alice');
+    await client.notify({ key: 'k', sharedWith: '@bob' }, 'v');
+    expect(fake.session.notify).toHaveBeenCalledWith('@bob:k.tally@alice', 'v');
+  });
+
+  it('every closed rejection from the client says the session is closed', async () => {
+    const client = await AtClient.create(opts);
+    await client.close();
+    expect(await rejection(client.otp())).toMatchObject({ code: 'closed', message: 'the session is closed' });
+    expect(() => client.subscribe()).toThrow(
+      expect.objectContaining({ code: 'closed', message: 'the session is closed' }),
+    );
+    expect(() => client.onStatus(() => {})).toThrow(
+      expect.objectContaining({ code: 'closed', message: 'the session is closed' }),
+    );
+  });
+
+  it('session async methods reject with closed after close()', async () => {
+    const client = await AtClient.create(opts);
+    await client.close();
+    expect((await rejection(client.notify({ key: 'k', sharedWith: '@bob' }, 'v'))).code).toBe('closed');
+    expect((await rejection(client.otp())).code).toBe('closed');
+    expect((await rejection(client.pendingEnrollments())).code).toBe('closed');
+    expect((await rejection(client.approve('id'))).code).toBe('closed');
+    expect((await rejection(client.deny('id'))).code).toBe('closed');
+    for (const method of ['notify', 'otp', 'pendingEnrollments', 'approve', 'deny'] as const) {
+      expect(fake.session[method]).not.toHaveBeenCalled();
+    }
+  });
+
+  it('subscribe lowercases namespace in the default regex', async () => {
+    const client = await AtClient.create({ ...opts, namespace: 'Tally' });
+    client.subscribe();
+    expect(fake.session.subscribe).toHaveBeenCalledWith(
+      '\\.tally@',
+      expect.any(Function),
+      expect.any(Function),
+    );
+  });
+
+  it('subscribe turns malformed notification keys into bad_key errors without crashing the listener', async () => {
+    const client = await AtClient.create(opts);
+    const iter = client.subscribe()[Symbol.asyncIterator]();
+    fake.listeners[0]!({ operation: 'update', from: '@bob', key: '@bob.tally', value: null });
+    await expect(iter.next()).rejects.toMatchObject({ code: 'bad_key' });
+    fake.listeners[0]!({ operation: 'update', from: '@bob', key: 'ok.tally@bob', value: 'v' });
+    expect((await iter.next()).value).toMatchObject({ from: '@bob', key: { key: 'ok', namespace: 'tally', sharedBy: '@bob' }, value: 'v' });
   });
 
   it('has no retry', async () => {
@@ -509,6 +775,16 @@ describe('collection', () => {
     fake.col.watchers[0]!.onEvent({ type: 'unknown', id: 'i2', owner: '@bob' });
     expect((await events.next()).value).toEqual({ type: 'updated', id: 'i1', owner: '@alice' });
     expect((await events.next()).value).toEqual({ type: 'unknown', id: 'i2', owner: '@bob' });
+  });
+
+  it('watch keeps a null owner on a sub-item ancestor', async () => {
+    const { tasks } = await open();
+    const events = tasks.watch()[Symbol.asyncIterator]();
+    const ancestry = [{ id: 'p1', subName: 'comments', owner: null }];
+    fake.col.watchers[0]!.onEvent({ type: 'subItemUpdated', id: 'c1', owner: '@alice', ancestry });
+    const event = (await events.next()).value;
+    expect(event).toEqual({ type: 'subItemUpdated', id: 'c1', owner: '@alice', ancestry });
+    expect((event as { ancestry: unknown }).ancestry).toBe(ancestry);
   });
 
   it('watch errors reject one next() and the stream carries on', async () => {

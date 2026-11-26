@@ -1,9 +1,10 @@
 Feature: A browser opens an atSign session only where it safely can
 
-  AtClient.create opens a session from an atSign's .atKeys document. It
-  checks the page and the options before the Dart bundle is loaded, and
-  rejects with an AtError whose code says why. The package has no passkey
-  entry points.
+  AtClient.create opens a session from an atSign's .atKeys document, or
+  signs in with a platform passkey. It checks the page and the options
+  before the Dart bundle is loaded, and rejects with an AtError whose code
+  says why. Passkey sign-in is an option of create; the package has no
+  separate passkey entry points.
 
   Scenario: passes the atSign, namespace and keys to the bridge
     Given a secure page
@@ -15,16 +16,31 @@ Feature: A browser opens an atSign session only where it safely can
     When create is called with a rootDomain
     Then the bridge receives it unchanged
 
-  Scenario: a missing namespace rejects bad_key before loading the bridge
+  Scenario: a missing or non-string atSign rejects invalid_argument before loading the bridge
     Given a secure page
-    When create is called without a namespace
-    Then it rejects with AtError code bad_key
+    When create is called with an atSign that is not a non-empty string
+    Then it rejects with AtError code invalid_argument
+    And the message names AtClientOptions.atSign
     And the Dart bundle has not been loaded
 
-  Scenario: missing keys reject bad_key before loading the bridge
+  Scenario: a missing namespace rejects invalid_argument before loading the bridge
     Given a secure page
-    When create is called without keys
-    Then it rejects with AtError code bad_key
+    When create is called without a namespace
+    Then it rejects with AtError code invalid_argument
+    And the Dart bundle has not been loaded
+
+  Scenario: a non-string namespace rejects invalid_argument before loading the bridge
+    Given a secure page
+    When create is called with a namespace that is not a non-empty string
+    Then it rejects with AtError code invalid_argument
+    And the message names AtClientOptions.namespace
+    And the Dart bundle has not been loaded
+
+  Scenario: missing or mistyped keys reject invalid_argument naming keys before loading the bridge
+    Given a secure page
+    When create is called with keys missing, null, a number, a boolean or an array
+    Then it rejects with AtError code invalid_argument
+    And the message names AtClientOptions.keys
     And the Dart bundle has not been loaded
 
   Scenario: a non-secure context rejects unsupported
@@ -36,3 +52,46 @@ Feature: A browser opens an atSign session only where it safely can
   Scenario: has no passkey entry points
     Given the AtClient class
     Then it has no onboard, enroll or prfSupported
+
+  Scenario: create(null) rejects with invalid_argument
+    Given a secure page
+    When create is called with null
+    Then it rejects with AtError code invalid_argument
+    And the Dart bundle has not been loaded
+
+  Scenario: create with non-object options rejects with invalid_argument
+    Given a secure page
+    When create is called with a string, a number or an array
+    Then each rejects with AtError code invalid_argument
+    And the Dart bundle has not been loaded
+
+  Scenario: create lowercases the namespace for the client but not for the bridge
+    Given a secure page
+    When create is called with the namespace Tally and the client sends a notification
+    Then the bridge was opened with Tally
+    And the notification key is under the namespace tally
+
+  Scenario: create lowercases the session atSign for the client but not for the bridge
+    Given a secure page
+    When create is called with the atSign @Alice and the client sends a notification
+    Then the bridge was opened with @Alice
+    And the notification key is under @alice
+
+  Scenario: passkey create forwards the passkey options to the bridge
+    Given a secure page
+    When create is called with passkey true, an rpId and an rpName
+    Then the bridge is asked to open the session with exactly those values
+
+  Scenario: passkey true without rpId or rpName rejects invalid_argument naming the option
+    Given a secure page
+    When create is called with passkey true and no rpId or rpName
+    Then it rejects with AtError code invalid_argument
+    And the message names the missing option
+    And the Dart bundle has not been loaded
+
+  Scenario: keys with passkey true reject invalid_argument before loading the bridge
+    Given a secure page
+    When create is called with keys and passkey true
+    Then it rejects with AtError code invalid_argument
+    And the message names AtClientOptions.keys
+    And the Dart bundle has not been loaded

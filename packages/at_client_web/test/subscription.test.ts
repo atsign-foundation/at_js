@@ -100,4 +100,14 @@ describe('EventQueue', () => {
     queue.push(0);
     expect(onDone).toHaveBeenCalledTimes(1);
   });
+
+  it('delivers buffered events and failures in FIFO arrival order', async () => {
+    const queue = new EventQueue<string>(() => {});
+    queue.push('first');
+    queue.fail(new AtError('boom', 'internal'));
+    queue.push('second');
+    expect(await queue.next()).toEqual({ value: 'first', done: false });
+    await expect(queue.next()).rejects.toMatchObject({ code: 'internal', message: 'boom' });
+    expect(await queue.next()).toEqual({ value: 'second', done: false });
+  });
 });

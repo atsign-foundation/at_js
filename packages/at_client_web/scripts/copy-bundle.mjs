@@ -2,13 +2,13 @@
 import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { resolveBundleSource } from './bridge-lib.mjs';
+import { verifiedBundleSource } from './bridge-lib.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const target = resolve(root, 'dist/dart/at_client.js');
 
 try {
-  const source = resolveBundleSource({ root, env: process.env, exists: existsSync });
+  const source = verifiedBundleSource({ root, env: process.env, exists: existsSync });
   mkdirSync(dirname(target), { recursive: true });
   copyFileSync(source, target);
 } catch (error) {

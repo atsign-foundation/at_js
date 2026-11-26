@@ -12,6 +12,8 @@ export type CollectionErrorCode =
   | 'COLLECTION_ITEM_HAS_SUB_ITEMS'
   /** A record could not be read on this device. */
   | 'COLLECTION_ITEM_UNREADABLE'
+  /** The item's data nests more than 64 levels. */
+  | 'COLLECTION_ITEM_TOO_DEEP'
   /** The collection's type does not match the one its items carry. */
   | 'COLLECTION_TYPE_MISMATCH'
   /** `update` on an item of another type. */
@@ -25,20 +27,30 @@ export type CollectionErrorCode =
 export type AtErrorCode =
   /** The atServer refused this enrollment's PKAM login. */
   | 'pkam_refused'
-  /** The client did not come online. */
+  /** The client did not come online, or a `notify` could not reach the atServer. */
   | 'offline'
+  /** A transport or atServer wait expired. */
+  | 'timeout'
+  /** `notify` did not send the notification: its recipient was unreachable, its key refused, or the atServer rejected it. */
+  | 'notify_failed'
   /** The enrollment is not complete; it is pending approval. */
   | 'onboarding_incomplete'
   /** The enrollment request was denied, or the pairing call was refused by the atServer. */
   | 'enrollment_denied'
+  /** `approve` or `deny` named an enrollment id whose decision is already in flight; nothing was sent. */
+  | 'enrollment_in_flight'
+  /** Approval or denial was accepted by the atServer, but delivering the response failed. */
+  | 'enrollment_conveyance_failed'
   /** The client is closed. */
   | 'closed'
   /** This page, option, key file or session cannot do what was asked. */
   | 'unsupported'
   /** Any failure with no code of its own. */
   | 'internal'
-  /** A key or the `.atKeys` document is malformed, or `namespace` is missing. */
+  /** A key or the `.atKeys` document is malformed. */
   | 'bad_key'
+  /** A caller mistake: a malformed argument, an invalid namespace, regex or owner, or non-plain data. The message names the parameter, never its value. */
+  | 'invalid_argument'
   /** A subscription buffered more than 4096 events the app did not consume. */
   | 'overflow'
   | CollectionErrorCode;
@@ -46,12 +58,17 @@ export type AtErrorCode =
 const codes: ReadonlySet<string> = new Set<AtErrorCode>([
   'pkam_refused',
   'offline',
+  'timeout',
+  'notify_failed',
   'onboarding_incomplete',
   'enrollment_denied',
+  'enrollment_in_flight',
+  'enrollment_conveyance_failed',
   'closed',
   'unsupported',
   'internal',
   'bad_key',
+  'invalid_argument',
   'overflow',
   'COLLECTION_INVALID_ARGUMENT',
   'COLLECTION_ITEM_NOT_FOUND',
@@ -59,6 +76,7 @@ const codes: ReadonlySet<string> = new Set<AtErrorCode>([
   'COLLECTION_ITEM_ALREADY_EXISTS',
   'COLLECTION_ITEM_HAS_SUB_ITEMS',
   'COLLECTION_ITEM_UNREADABLE',
+  'COLLECTION_ITEM_TOO_DEEP',
   'COLLECTION_TYPE_MISMATCH',
   'COLLECTION_ITEM_WRONG_TYPE',
   'COLLECTION_PARTIAL_FAILURE',

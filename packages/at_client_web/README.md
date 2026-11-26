@@ -34,13 +34,28 @@ await client.close();
 | Option | Meaning |
 |---|---|
 | `atSign` | The atSign the keys belong to |
-| `namespace` | Required. The one grant name: it scopes every key and is the namespace the session asks the atServer for |
-| `keys` | Required. The `.atKeys` document |
+| `namespace` | Required. The one grant name: it scopes every key and is the namespace the session asks the atServer for. The client lowercases it for its own keys and subscriptions; the session is asked for it as given |
+| `keys` | The `.atKeys` document. Required unless `passkey` is `true` |
+| `passkey` | Optional `true`. Signs in with a platform passkey instead of a `.atKeys` document; requires `rpId` and `rpName`, and cannot be combined with `keys` |
+| `rpId` | Required with `passkey`: the relying party id the passkey is scoped to |
+| `rpName` | Required with `passkey`: the relying party name the browser shows when it asks for the passkey |
 | `rootDomain` | Optional `host[:port]` of the root server. Passed through unchanged; default `root.atsign.org` |
+
+```ts
+const client = await AtClient.create({
+  atSign: '@alice',
+  namespace: 'myapp',
+  passkey: true,
+  rpId: 'myapp.example.com',
+  rpName: 'My App',
+});
+```
 
 Send another atSign a notification with `client.notify({ key: 'greeting', sharedWith: '@bob' }, 'hi')`.
 
-`subscribe(regex?)` registers when called, buffers up to 4096 events, and ends when you leave the loop or call `close()`. On overflow the subscription ends, buffered events are discarded, and `next()` rejects with `AtError('overflow')`; subscribe again to resume. An error raised on the stream rejects one `next()` and the stream carries on. Without `regex` it matches the client's namespace.
+`notify` sends the key as atKey text — `[@recipient:]name[.namespace]@owner` — built from the `AtKey` and the session's namespace and atSign. The namespace is the key's own, or the session's unless `noNamespace` is set; `sharedBy` defaults to the session's atSign. `public: true` and `cached: true` keys cannot be sent: `notify` rejects them locally with `invalid_argument` naming the flag.
+
+`subscribe(regex?)` registers when called, buffers up to 4096 events, and ends when you leave the loop or call `close()`. On overflow the subscription ends, buffered events are discarded, and `next()` rejects with `AtError('overflow')`; subscribe again to resume. Events and stream errors arrive from `next()` in arrival order, so an error can follow or precede buffered events; each rejects one `next()` and the stream carries on. A notification whose key is malformed rejects one `next()` with `bad_key` the same way. The `key` of each event has its atSign and namespace in lowercase. Without `regex` it matches the client's namespace.
 
 **Notifications sent while the tab is closed or reloading are never delivered.** A session only receives what is sent while it is connected.
 
@@ -77,7 +92,7 @@ Item `data` is a plain object with no prototype. Items expire 7 days after creat
 
 ## Connection status
 
-`client.status` is the latest state; `client.onStatus(cb)` reports each change and returns an `off` function.
+`client.status` is the latest state; `client.onStatus(cb)` reports each change and returns an `off` function. A listener that is not a function throws `AtError('invalid_argument')` synchronously and registers nothing.
 
 | State | Meaning |
 |---|---|
@@ -100,15 +115,22 @@ Every call rejects with an `AtError`. Branch on `error.code`, never on the messa
 | `code` | Meaning |
 |---|---|
 | `pkam_refused` | The atServer refused this enrollment's login |
-| `offline` | The client did not come online |
+| `offline` | The client did not come online, or a `notify` could not reach the atServer |
+| `timeout` | A transport or atServer wait expired |
+| `notify_failed` | `notify` did not send the notification: its recipient was unreachable, its key was refused, or the atServer rejected it |
 | `onboarding_incomplete` | The enrollment started but did not finish |
 | `enrollment_denied` | The enrollment was denied, or an `approve`/`deny` id was unknown |
-| `closed` | The client is closed |
+| `enrollment_in_flight` | `approve` or `deny` named an id whose decision is already in flight; nothing was sent |
+| `enrollment_conveyance_failed` | Approval or denial succeeded on the atServer, but delivering the response failed |
+| `closed` | The client is closed; the message is `the session is closed` |
 | `unsupported` | Not a browser, not a secure context, or a pairing call without `__manage` |
-| `bad_key` | The keys are malformed or missing, or `namespace` is missing |
+| `bad_key` | The keys are not valid JSON or not a usable `.atKeys` document; notify key text the bridge refuses (no recipient, a mismatched owner, malformed key or namespace); also a `subscribe` notification whose key is malformed (rejects one `next()`; the stream carries on) |
+| `invalid_argument` | A caller mistake: a malformed argument, `create`'s options being `null` or not an object, a missing or invalid `namespace`, missing or mistyped `keys` (unless `passkey` is `true`), `passkey: true` without `rpId`/`rpName` or together with `keys`, an invalid regex or `address.owner`, `notify` on a `public` or `cached` key, or `data`/`opts` that are not plain objects. The message names the parameter or field, never its value |
 | `overflow` | A subscription buffered more than 4096 events; it ended and its buffer was discarded |
 | `internal` | Anything else, including a bundle that failed to load |
-| `COLLECTION_*` | Collection failures: `INVALID_ARGUMENT`, `ITEM_NOT_FOUND`, `ITEM_NOT_OWNER`, `ITEM_ALREADY_EXISTS`, `ITEM_HAS_SUB_ITEMS`, `ITEM_UNREADABLE`, `TYPE_MISMATCH`, `ITEM_WRONG_TYPE`, `PARTIAL_FAILURE`, `FAILED` |
+| `COLLECTION_*` | Collection failures: `INVALID_ARGUMENT`, `ITEM_NOT_FOUND`, `ITEM_NOT_OWNER`, `ITEM_ALREADY_EXISTS`, `ITEM_HAS_SUB_ITEMS`, `ITEM_UNREADABLE`, `ITEM_TOO_DEEP`, `TYPE_MISMATCH`, `ITEM_WRONG_TYPE`, `PARTIAL_FAILURE`, `FAILED` |
+
+**Bounded text.** The pinned Dart bridge (see [Development](#development)) bounds ids, owners, names, recipients, namespace keys, event and ancestry fields, and an item's stored type to one line of at most 128 characters; this package does not deliver or check that bound. Payloads are delivered as received: a notification's `value` and an item's `data` get no length or newline check.
 
 `subscribe`, `onStatus` and `watch` after `close` throw `AtError('closed')` synchronously; the other calls reject.
 
@@ -130,7 +152,7 @@ Every call rejects with an `AtError`. Branch on `error.code`, never on the messa
 
 - Keys come from a `.atKeys` document: the plaintext JSON, or the flat shape of the key fields. Documents whose key fields are self-encrypted are not decrypted in the browser.
 - The connection status is classified when the connection changes state; a browser online/offline event alone does not emit one.
-- No passkey sign-in, onboarding or enrollment of new browsers.
+- No onboarding or enrollment of new browsers; passkey sign-in is only the `passkey` option of `create`.
 - Browser only; there is no Node runtime.
 
 ## API reference

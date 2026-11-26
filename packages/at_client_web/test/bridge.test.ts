@@ -1,11 +1,18 @@
-import { mkdtempSync, rmSync, writeFileSync, existsSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  BRIDGE_REPO,
+  BRIDGE_SIGNER_WORKFLOW,
+  BRIDGE_SOURCE_REF,
+  attestationArgs,
   parseBridgeRef,
   resolveBundleSource,
   sha256Hex,
+  verifiedBundleSource,
   verifyDownload,
 } from '../scripts/bridge-lib.mjs';
 
@@ -91,5 +98,94 @@ describe('resolveBundleSource', () => {
     expect(() =>
       resolveBundleSource({ root, env: { AT_CLIENT_WEB_BUNDLE: '/x/b.js' }, exists: () => false }),
     ).toThrow(/AT_CLIENT_WEB_BUNDLE.*\/x\/b\.js/);
+  });
+});
+
+describe('verifiedBundleSource', () => {
+  function pkg(bundle: string, pinned: string): string {
+    const root = tmp();
+    mkdirSync(join(root, '.bridge'));
+    writeFileSync(join(root, '.bridge', 'at_client_web.js'), bundle);
+    writeFileSync(join(root, 'bridge.ref'), JSON.stringify({ tag, sha256: sha256Hex(Buffer.from(pinned)) }));
+    return root;
+  }
+
+  it('copy-bundle accepts a fetched bundle whose sha256 matches bridge.ref', () => {
+    const root = pkg('bundle', 'bundle');
+    expect(verifiedBundleSource({ root, env: {}, exists: existsSync })).toBe(join(root, '.bridge', 'at_client_web.js'));
+  });
+
+  it('copy-bundle rejects a fetched bundle whose sha256 differs from bridge.ref', () => {
+    const root = pkg('tampered', 'bundle');
+    expect(() => verifiedBundleSource({ root, env: {}, exists: existsSync })).toThrow(/checksum mismatch/);
+    expect(existsSync(join(root, '.bridge', 'at_client_web.js'))).toBe(false);
+  });
+
+  it('copy-bundle skips the checksum when AT_CLIENT_WEB_BUNDLE is set', () => {
+    const root = pkg('bundle', 'bundle');
+    const override = join(root, 'local.js');
+    writeFileSync(override, 'anything');
+    expect(verifiedBundleSource({ root, env: { AT_CLIENT_WEB_BUNDLE: override }, exists: existsSync })).toBe(override);
+    expect(existsSync(override)).toBe(true);
+  });
+});
+
+describe('copy-bundle script', () => {
+  const scriptsDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'scripts');
+
+  function pkg(bundle: string, pinned: string): string {
+    const root = tmp();
+    mkdirSync(join(root, 'scripts'));
+    for (const name of ['copy-bundle.mjs', 'bridge-lib.mjs']) {
+      copyFileSync(join(scriptsDir, name), join(root, 'scripts', name));
+    }
+    mkdirSync(join(root, '.bridge'));
+    writeFileSync(join(root, '.bridge', 'at_client_web.js'), bundle);
+    writeFileSync(join(root, 'bridge.ref'), JSON.stringify({ tag, sha256: sha256Hex(Buffer.from(pinned)) }));
+    return root;
+  }
+
+  function run(root: string) {
+    const env = { ...process.env };
+    delete env.AT_CLIENT_WEB_BUNDLE;
+    return spawnSync(process.execPath, [join(root, 'scripts', 'copy-bundle.mjs')], {
+      cwd: root,
+      env,
+      encoding: 'utf8',
+    });
+  }
+
+  it('copy-bundle runs the checksum check and copies a fetched bundle whose sha256 matches bridge.ref', () => {
+    const root = pkg('bundle', 'bundle');
+    const result = run(root);
+    expect(result.status).toBe(0);
+    expect(readFileSync(join(root, 'dist', 'dart', 'at_client.js'), 'utf8')).toBe('bundle');
+  });
+
+  it('copy-bundle refuses a fetched bundle whose sha256 differs and copies nothing', () => {
+    const root = pkg('tampered', 'bundle');
+    const result = run(root);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('checksum mismatch');
+    expect(existsSync(join(root, 'dist', 'dart', 'at_client.js'))).toBe(false);
+  });
+});
+
+describe('attestationArgs', () => {
+  it('fetch-bridge pins the source ref and denies self-hosted runners', () => {
+    const args = attestationArgs('/b/at_client_web.js');
+    expect(args).toEqual([
+      'attestation',
+      'verify',
+      '/b/at_client_web.js',
+      '-R',
+      BRIDGE_REPO,
+      '--signer-workflow',
+      BRIDGE_SIGNER_WORKFLOW,
+      '--source-ref',
+      BRIDGE_SOURCE_REF,
+      '--deny-self-hosted-runners',
+    ]);
+    expect(BRIDGE_SOURCE_REF).toBe('refs/heads/trunk');
   });
 });

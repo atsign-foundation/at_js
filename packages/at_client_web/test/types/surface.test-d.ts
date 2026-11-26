@@ -6,6 +6,24 @@ import { AtClient } from '../../dist/index.js';
 declare const client: impl.AtClient;
 
 export const create: (opts: impl.AtClientOptions) => Promise<impl.AtClient> = AtClient.create;
+export const passkeyCreate: Promise<impl.AtClient> = AtClient.create({
+  atSign: '@alice',
+  namespace: 'tally',
+  passkey: true,
+  rpId: 'example.com',
+  rpName: 'Tally',
+});
+export const keysCreate: Promise<impl.AtClient> = AtClient.create({
+  atSign: '@alice',
+  namespace: 'tally',
+  keys: '{"@alice":{}}',
+});
+// @ts-expect-error a .atKeys document or a passkey is required
+void AtClient.create({ atSign: '@alice', namespace: 'tally' });
+// @ts-expect-error passkey is true when given, never false
+void AtClient.create({ atSign: '@alice', namespace: 'tally', passkey: false });
+// @ts-expect-error keys cannot be combined with passkey: true
+void AtClient.create({ atSign: '@alice', namespace: 'tally', keys: '{}', passkey: true, rpId: 'example.com', rpName: 'Tally' });
 export const status: impl.ConnectionStatus = client.status;
 export const off: () => void = client.onStatus((next: impl.ConnectionStatus) => void next);
 
@@ -22,11 +40,14 @@ export const updated: Promise<impl.Item<{ n: number }>> = collection.update('id'
 export const shared: Promise<impl.Item<{ n: number }>> = collection.share('id', ['@b']);
 export const removed: Promise<void> = collection.remove('id');
 export const watched: AsyncIterable<impl.CollectionEvent<{ n: number }>> = collection.watch();
+export const ancestor: impl.Ancestor = { id: 'p1', subName: 'comments', owner: null };
 
 // @ts-expect-error data must be an object
 void client.collection<string>('x', { type: 't' });
 
 export const notified: Promise<boolean> = client.notify({ key: 'k', sharedWith: '@b' }, 'v');
+export const publicKey: impl.AtKey = { key: 'k', sharedWith: '@b', public: true };
+export const cachedKey: impl.AtKey = { key: 'k', sharedWith: '@b', cached: true };
 export const events: AsyncIterable<impl.AtEvent> = client.subscribe('regex');
 export const closed: Promise<void> = client.close();
 
@@ -37,6 +58,10 @@ export const denied: Promise<void> = client.deny('id');
 
 export const errorOut: Error & { code: string } = {} as impl.AtError;
 export const code: impl.AtErrorCode = 'bad_key';
+export const invalidArgument: impl.AtErrorCode = 'invalid_argument';
+export const inFlight: impl.AtErrorCode = 'enrollment_in_flight';
+export const notifyFailed: impl.AtErrorCode = 'notify_failed';
+export const timedOut: impl.AtErrorCode = 'timeout';
 
 // The flat data plane and the passkey entry points are not part of the surface.
 // @ts-expect-error no get

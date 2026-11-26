@@ -1,10 +1,34 @@
 Feature: notify sends to another atSign and subscribe delivers only genuine events
 
   notify sends a value on a key shared with another atSign and resolves true
-  when it was delivered. subscribe registers when called and hands the app
+  when it was delivered. The key is sent as atKey text — the recipient, the
+  key with its namespace, and the owner — built from the AtKey and the
+  session's namespace and atSign; a public or cached key is refused locally.
+  subscribe registers when called and hands the app
   events as an async iterator. A notification this session sent, or one whose
   key owner is not its sender, is never delivered. The iterator buffers up to
   4096 events; past that it ends and its next() rejects overflow.
+
+  Scenario: notify sends the key as atKey text with the session namespace and atSign
+    Given an open session in namespace tally, as @alice
+    When notify is called on key k shared with @bob without a namespace
+    Then the bridge is called with @bob:k.tally@alice and the value
+
+  Scenario: notify keeps an explicit namespace and owner
+    Given an open session in namespace tally, as @alice
+    When notify is called on key k with namespace other, shared with @bob by @carol
+    Then the bridge is called with @bob:k.other@carol and the value
+
+  Scenario: notify with noNamespace sends the key with no namespace
+    Given an open session in namespace tally, as @alice
+    When notify is called on key k shared with @bob with noNamespace true and namespace other
+    Then the bridge is called with @bob:k@alice and the value
+
+  Scenario: notify with a public or cached key rejects invalid_argument naming the flag and sends nothing
+    Given an open session
+    When notify is called with public true or cached true
+    Then each rejects with AtError code invalid_argument naming the flag
+    And the bridge is not asked to notify
 
   Scenario: a subscription that buffers past the cap unsubscribes and rejects with overflow
     Given an open subscription the app is not reading

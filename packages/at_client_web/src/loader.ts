@@ -1,5 +1,4 @@
 import { AtError } from './error.js';
-import type { BridgeKey } from './key.js';
 
 /** A bridge notification as the Dart side delivers it. */
 export interface BridgeNotification {
@@ -86,7 +85,7 @@ export interface BridgeCollection {
 
 /** One open client on the Dart side. */
 export interface BridgeSession {
-  notify(key: BridgeKey, value: string): Promise<boolean>;
+  notify(key: string, value: string): Promise<boolean>;
   /** The function that unsubscribes, or the failure when it cannot subscribe. */
   subscribe(
     regex: string,

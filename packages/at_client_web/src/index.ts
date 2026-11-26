@@ -1,5 +1,5 @@
 import { AtError, toAtError, type AtErrorCode } from './error.js';
-import { parseKey, toBridgeKey } from './key.js';
+import { parseKey, toKeyText } from './key.js';
 import { openCollection, type Collection } from './collection.js';
 import {
   loadBridge,
@@ -57,11 +57,11 @@ export interface AtKey {
   sharedWith?: string;
   /** Defaults to the client's `namespace`. */
   namespace?: string;
-  /** A public key (`public:`); set on the keys a `subscribe` event carries. */
+  /** A public key (`public:`); set on the keys a `subscribe` event carries and refused by `notify`. */
   public?: boolean;
-  /** A key cached from another atSign (`cached:`); set on the keys a `subscribe` event carries. */
+  /** A key cached from another atSign (`cached:`); set on the keys a `subscribe` event carries and refused by `notify`. */
   cached?: boolean;
-  /** The key has no namespace; set on the keys a `subscribe` event carries. */
+  /** The key has no namespace; set on the keys a `subscribe` event carries, and honored by `notify`. */
   noNamespace?: boolean;
 }
 
@@ -183,6 +183,7 @@ export class AtClient {
   private constructor(
     private readonly session: BridgeSession,
     private readonly namespace: string,
+    private readonly atSign: string,
   ) {}
 
   /** Opens the session for [opts]: the atSign and namespace, from its `.atKeys` document or a passkey. */
@@ -190,7 +191,7 @@ export class AtClient {
     requireSecureBrowser();
     const options = bridgeOptions(opts);
     const session = await bridged(async () => (await loadBridge()).create(options));
-    return new AtClient(session, options.namespace.toLowerCase());
+    return new AtClient(session, options.namespace.toLowerCase(), options.atSign.toLowerCase());
   }
 
   /**
@@ -235,9 +236,20 @@ export class AtClient {
     }
   }
 
-  /** Sends `value` to the key's `sharedWith` atSign as a notification. */
+  /**
+   * Sends `value` to the key's `sharedWith` atSign as a notification,
+   * resolving true once it was delivered.
+   *
+   * The key is sent as atKey text, `[@recipient:]name[.namespace]@owner`:
+   * the namespace is the key's own or the session's unless `noNamespace` is
+   * set, and the owner is the key's `sharedBy` or the session's atSign. A
+   * `public` or `cached` key cannot be sent and rejects `invalid_argument`
+   * naming the flag.
+   */
   notify(key: AtKey, value: string): Promise<boolean> {
-    return this.bridgedOpen(() => this.session.notify(toBridgeKey(key, this.namespace), value));
+    return this.bridgedOpen(() =>
+      this.session.notify(toKeyText(key, this.namespace, this.atSign), value),
+    );
   }
 
   /**

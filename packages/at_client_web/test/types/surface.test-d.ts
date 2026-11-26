@@ -36,6 +36,8 @@ export const watched: AsyncIterable<impl.CollectionEvent<{ n: number }>> = colle
 void client.collection<string>('x', { type: 't' });
 
 export const notified: Promise<boolean> = client.notify({ key: 'k', sharedWith: '@b' }, 'v');
+export const publicKey: impl.AtKey = { key: 'k', sharedWith: '@b', public: true };
+export const cachedKey: impl.AtKey = { key: 'k', sharedWith: '@b', cached: true };
 export const events: AsyncIterable<impl.AtEvent> = client.subscribe('regex');
 export const closed: Promise<void> = client.close();
 
@@ -48,6 +50,8 @@ export const errorOut: Error & { code: string } = {} as impl.AtError;
 export const code: impl.AtErrorCode = 'bad_key';
 export const invalidArgument: impl.AtErrorCode = 'invalid_argument';
 export const inFlight: impl.AtErrorCode = 'enrollment_in_flight';
+export const notifyFailed: impl.AtErrorCode = 'notify_failed';
+export const timedOut: impl.AtErrorCode = 'timeout';
 
 // The flat data plane and the passkey entry points are not part of the surface.
 // @ts-expect-error no get

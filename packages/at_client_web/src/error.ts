@@ -27,8 +27,12 @@ export type CollectionErrorCode =
 export type AtErrorCode =
   /** The atServer refused this enrollment's PKAM login. */
   | 'pkam_refused'
-  /** The client did not come online. */
+  /** The client did not come online, or a `notify` could not reach the atServer. */
   | 'offline'
+  /** A transport or atServer wait expired. */
+  | 'timeout'
+  /** `notify` did not send the notification: its recipient was unreachable, its key refused, or the atServer rejected it. */
+  | 'notify_failed'
   /** The enrollment is not complete; it is pending approval. */
   | 'onboarding_incomplete'
   /** The enrollment request was denied, or the pairing call was refused by the atServer. */
@@ -54,6 +58,8 @@ export type AtErrorCode =
 const codes: ReadonlySet<string> = new Set<AtErrorCode>([
   'pkam_refused',
   'offline',
+  'timeout',
+  'notify_failed',
   'onboarding_incomplete',
   'enrollment_denied',
   'enrollment_in_flight',

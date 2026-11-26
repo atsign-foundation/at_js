@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AtClient, AtError } from '../src/index.js';
+import { AtClient, AtError, type AtKey } from '../src/index.js';
 import { MAX_BUFFERED_EVENTS } from '../src/subscription.js';
 import { setBridgeLoader, type Bridge, type BridgeOptions, type BridgeSession } from '../src/loader.js';
 
@@ -220,7 +220,7 @@ describe('error mapping', () => {
 
   it('maps every code through unchanged', async () => {
     for (const code of [
-      'pkam_refused', 'offline', 'onboarding_incomplete', 'enrollment_denied',
+      'pkam_refused', 'offline', 'timeout', 'notify_failed', 'onboarding_incomplete', 'enrollment_denied',
       'enrollment_in_flight', 'enrollment_conveyance_failed', 'closed', 'unsupported', 'internal',
       'bad_key', 'invalid_argument',
       'COLLECTION_INVALID_ARGUMENT', 'COLLECTION_ITEM_NOT_FOUND', 'COLLECTION_ITEM_NOT_OWNER',
@@ -286,6 +286,18 @@ describe('error mapping', () => {
     expect((await rejection(client.otp())).code).toBe('closed');
   });
 
+  it('maps a notify_failed rejection through unchanged', async () => {
+    const client = await AtClient.create(opts);
+    fake.session.notify.mockRejectedValueOnce({
+      code: 'notify_failed',
+      message: 'the atServer could not reach the notification recipient',
+    });
+    expect(await rejection(client.notify({ key: 'k', sharedWith: '@bob' }, 'v'))).toMatchObject({
+      code: 'notify_failed',
+      message: 'the atServer could not reach the notification recipient',
+    });
+  });
+
   it('keeps AtError a subclass of Error with the given code', () => {
     const error = new AtError('m', 'offline');
     expect(error).toBeInstanceOf(Error);
@@ -295,15 +307,41 @@ describe('error mapping', () => {
 });
 
 describe('session calls', () => {
-  it('notify resolves what the bridge reports', async () => {
+  it('notify sends the key as atKey text with the session namespace and atSign', async () => {
     const client = await AtClient.create(opts);
     expect(await client.notify({ key: 'rpc.req.1', sharedWith: '@alice' }, 'ping')).toBe(true);
-    expect(fake.session.notify).toHaveBeenCalledWith(
-      { key: 'rpc.req.1', namespace: 'tally', sharedWith: '@alice' },
-      'ping',
-    );
+    expect(fake.session.notify).toHaveBeenCalledWith('@alice:rpc.req.1.tally@alice', 'ping');
     fake.session.notify.mockResolvedValueOnce(false);
     expect(await client.notify({ key: 'x', sharedWith: '@alice' }, 'ping')).toBe(false);
+  });
+
+  it('notify keeps an explicit namespace and owner, lowercasing the namespace', async () => {
+    const client = await AtClient.create(opts);
+    await client.notify({ key: 'k', namespace: 'Other', sharedWith: '@bob', sharedBy: '@carol' }, 'v');
+    expect(fake.session.notify).toHaveBeenCalledWith('@bob:k.other@carol', 'v');
+  });
+
+  it('notify sends no namespace for a key marked noNamespace, ignoring a given one', async () => {
+    const client = await AtClient.create(opts);
+    await client.notify(
+      { key: 'k', namespace: 'other', sharedWith: '@bob', noNamespace: true },
+      'v',
+    );
+    expect(fake.session.notify).toHaveBeenCalledWith('@bob:k@alice', 'v');
+  });
+
+  it('notify refuses a public or cached key invalid_argument naming the flag, sending nothing', async () => {
+    const client = await AtClient.create(opts);
+    const cases: Array<[AtKey, string]> = [
+      [{ key: 'k', sharedWith: '@bob', public: true }, 'AtKey.public'],
+      [{ key: 'k', sharedWith: '@bob', cached: true }, 'AtKey.cached'],
+    ];
+    for (const [key, field] of cases) {
+      const error = await rejection(client.notify(key, 'v'));
+      expect(error.code).toBe('invalid_argument');
+      expect(error.message).toContain(field);
+    }
+    expect(fake.session.notify).not.toHaveBeenCalled();
   });
 });
 
@@ -535,7 +573,7 @@ describe('status', () => {
     const client = await AtClient.create({ ...opts, namespace: 'Tally' });
     expect(bridge.create.mock.calls.at(-1)![0].namespace).toBe('Tally');
     await client.notify({ key: 'k', sharedWith: '@bob' }, 'v');
-    expect(fake.session.notify).toHaveBeenCalledWith({ key: 'k', namespace: 'tally', sharedWith: '@bob' }, 'v');
+    expect(fake.session.notify).toHaveBeenCalledWith('@bob:k.tally@alice', 'v');
   });
 
   it('every closed rejection from the client says the session is closed', async () => {

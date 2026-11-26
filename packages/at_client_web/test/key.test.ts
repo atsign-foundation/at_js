@@ -1,35 +1,54 @@
 import { describe, expect, it } from 'vitest';
-import { parseKey, toBridgeKey } from '../src/key.js';
+import { parseKey, toKeyText } from '../src/key.js';
+import { AtError } from '../src/error.js';
 
-describe('toBridgeKey', () => {
-  it('defaults the namespace and drops absent fields', () => {
-    expect(toBridgeKey({ key: 'note' }, 'wavi')).toEqual({ key: 'note', namespace: 'wavi' });
+describe('toKeyText', () => {
+  const self = '@alice';
+
+  it('composes the recipient, key, session namespace and session atSign', () => {
+    expect(toKeyText({ key: 'note', sharedWith: '@bob' }, 'wavi', self)).toBe('@bob:note.wavi@alice');
   });
 
-  it('keeps an explicit namespace, sharedWith and sharedBy', () => {
+  it('keeps an explicit namespace, lowercased, and an explicit owner', () => {
     expect(
-      toBridgeKey({ key: 'k', namespace: 'tally', sharedWith: '@bob', sharedBy: '@alice' }, 'wavi'),
-    ).toEqual({ key: 'k', namespace: 'tally', sharedWith: '@bob', sharedBy: '@alice' });
+      toKeyText({ key: 'k', namespace: 'Other', sharedWith: '@bob', sharedBy: '@carol' }, 'wavi', self),
+    ).toBe('@bob:k.other@carol');
   });
 
-  it('does not carry undefined properties onto the bridge object', () => {
-    const bridgeKey = toBridgeKey({ key: 'k', sharedWith: undefined }, 'wavi');
-    expect(Object.keys(bridgeKey).sort()).toEqual(['key', 'namespace']);
+  it('adds no namespace, and ignores a given one, when noNamespace is true', () => {
+    expect(toKeyText({ key: 'k', sharedWith: '@bob', noNamespace: true }, 'wavi', self)).toBe('@bob:k@alice');
+    expect(
+      toKeyText({ key: 'k', namespace: 'other', sharedWith: '@bob', noNamespace: true }, 'wavi', self),
+    ).toBe('@bob:k@alice');
   });
-});
 
-describe('keys to the bridge', () => {
-  it('sends the flags and no default namespace for a key that had none', () => {
-    expect(toBridgeKey(parseKey('public:plain@alice', 'wavi'), 'wavi')).toEqual({
-      key: 'plain', sharedBy: '@alice', public: true, noNamespace: true,
+  it('leaves off a recipient that is not given, for the bridge to refuse', () => {
+    expect(toKeyText({ key: 'k' }, 'wavi', self)).toBe('k.wavi@alice');
+  });
+
+  it('refuses a public key, naming the flag', () => {
+    expect(refusal({ key: 'k', sharedWith: '@bob', public: true })).toMatchObject({
+      code: 'invalid_argument',
+      message: 'AtKey.public: cannot be sent in a notification',
     });
   });
 
-  it('sends public and cached through', () => {
-    expect(toBridgeKey({ key: 'k', public: true, cached: true }, 'wavi')).toEqual({
-      key: 'k', namespace: 'wavi', public: true, cached: true,
+  it('refuses a cached key, naming the flag', () => {
+    expect(refusal({ key: 'k', sharedWith: '@bob', cached: true })).toMatchObject({
+      code: 'invalid_argument',
+      message: 'AtKey.cached: cannot be sent in a notification',
     });
   });
+
+  function refusal(key: Parameters<typeof toKeyText>[0]): AtError {
+    try {
+      toKeyText(key, 'wavi', self);
+    } catch (error) {
+      expect(error).toBeInstanceOf(AtError);
+      return error as AtError;
+    }
+    throw new Error('expected a refusal');
+  }
 });
 
 describe('parseKey', () => {

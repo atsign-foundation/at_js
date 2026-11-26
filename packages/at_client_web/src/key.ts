@@ -1,28 +1,27 @@
 import { AtError } from './error.js';
 import type { AtKey } from './index.js';
 
-/** A key as the bridge takes it: absent fields are left out. */
-export interface BridgeKey {
-  key: string;
-  /** Absent for a key with no namespace (then [noNamespace] is true). */
-  namespace?: string;
-  sharedWith?: string;
-  sharedBy?: string;
-  public?: true;
-  cached?: true;
-  noNamespace?: true;
-}
-
-/** The bridge's form of [key], under [namespace] unless it names its own. */
-export function toBridgeKey(key: AtKey, namespace: string): BridgeKey {
-  const bridgeKey: BridgeKey = { key: key.key };
-  if (key.noNamespace === true) bridgeKey.noNamespace = true;
-  else bridgeKey.namespace = key.namespace ?? namespace;
-  if (key.sharedWith !== undefined) bridgeKey.sharedWith = key.sharedWith;
-  if (key.sharedBy !== undefined) bridgeKey.sharedBy = key.sharedBy;
-  if (key.public === true) bridgeKey.public = true;
-  if (key.cached === true) bridgeKey.cached = true;
-  return bridgeKey;
+/**
+ * The atKey text `notify` takes for [key]:
+ * `[@recipient:]name[.namespace]@owner`.
+ *
+ * The namespace is [key.namespace] (lowercased), else [namespace]; it is left
+ * off when [key.noNamespace] is true, and a namespace given beside that flag
+ * is ignored. The owner is [key.sharedBy], else [atSign]. A `public` or
+ * `cached` key cannot be sent as a notification, and throws `AtError`
+ * `invalid_argument` naming the flag.
+ */
+export function toKeyText(key: AtKey, namespace: string, atSign: string): string {
+  if (key.public === true) {
+    throw new AtError('AtKey.public: cannot be sent in a notification', 'invalid_argument');
+  }
+  if (key.cached === true) {
+    throw new AtError('AtKey.cached: cannot be sent in a notification', 'invalid_argument');
+  }
+  const recipient = key.sharedWith === undefined ? '' : `${key.sharedWith}:`;
+  const name =
+    key.noNamespace === true ? key.key : `${key.key}.${(key.namespace ?? namespace).toLowerCase()}`;
+  return `${recipient}${name}${key.sharedBy ?? atSign}`;
 }
 
 /**

@@ -12,6 +12,7 @@ import {
   parseBridgeRef,
   resolveBundleSource,
   sha256Hex,
+  stripSourceMapComment,
   verifiedBundleSource,
   verifyDownload,
 } from '../scripts/bridge-lib.mjs';
@@ -130,6 +131,39 @@ describe('verifiedBundleSource', () => {
   });
 });
 
+describe('stripSourceMapComment', () => {
+  it('removes a trailing sourceMappingURL comment and leaves exactly one newline', () => {
+    expect(stripSourceMapComment('body\n//# sourceMappingURL=at_client_web.js.map\n')).toBe('body\n');
+  });
+
+  it('removes the comment when trailing blank lines follow it', () => {
+    expect(stripSourceMapComment('body\n//# sourceMappingURL=x.map\n\n')).toBe('body\n');
+  });
+
+  it('returns an empty string for a comment-only file', () => {
+    expect(stripSourceMapComment('//# sourceMappingURL=x.map\n')).toBe('');
+  });
+
+  it('normalises CRLF line endings after stripping the comment', () => {
+    expect(stripSourceMapComment('body\r\n//# sourceMappingURL=x.map\r\n')).toBe('body\n');
+  });
+
+  it('leaves text without the comment unchanged', () => {
+    expect(stripSourceMapComment('body\n')).toBe('body\n');
+    expect(stripSourceMapComment('body')).toBe('body');
+  });
+
+  it('leaves a sourceMappingURL line that is not the last line untouched', () => {
+    const text = '//# sourceMappingURL=at_client_web.js.map\nbody\n';
+    expect(stripSourceMapComment(text)).toBe(text);
+  });
+
+  it('leaves an ordinary line mentioning sourceMappingURL untouched', () => {
+    const text = '// the sourceMappingURL comment is stripped on copy\n';
+    expect(stripSourceMapComment(text)).toBe(text);
+  });
+});
+
 describe('copy-bundle script', () => {
   const scriptsDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'scripts');
 
@@ -168,6 +202,16 @@ describe('copy-bundle script', () => {
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('checksum mismatch');
     expect(existsSync(join(root, 'dist', 'dart', 'at_client.js'))).toBe(false);
+  });
+
+  it('copy-bundle strips a trailing sourceMappingURL comment from the copied bundle', () => {
+    const source = 'bundle\n//# sourceMappingURL=at_client_web.js.map\n';
+    const root = pkg(source, source);
+    const result = run(root);
+    expect(result.status).toBe(0);
+    const copied = readFileSync(join(root, 'dist', 'dart', 'at_client.js'), 'utf8');
+    expect(copied).not.toContain('sourceMappingURL');
+    expect(copied).toBe('bundle\n');
   });
 });
 

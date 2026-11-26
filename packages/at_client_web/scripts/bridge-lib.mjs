@@ -91,3 +91,19 @@ export function verifiedBundleSource({ root, env, exists }) {
   }
   return source;
 }
+
+const TRAILING_SOURCE_MAP_COMMENT =
+  /(?:^|\r?\n)[ \t]*\/\/#[ \t]*sourceMappingURL=[^\r\n]*(?:\r?\n)*[ \t]*$/u;
+
+/**
+ * Drops a trailing `//# sourceMappingURL=...` line and returns the rest with
+ * exactly one trailing newline. The release ships no map and copy-bundle
+ * renames the file, so the comment would only point at a missing map. Text
+ * whose last non-empty line is not such a comment is returned unchanged.
+ */
+export function stripSourceMapComment(text) {
+  const match = TRAILING_SOURCE_MAP_COMMENT.exec(text);
+  if (match === null) return text;
+  const body = text.slice(0, match.index);
+  return body === '' ? '' : `${body}\n`;
+}

@@ -17,3 +17,4 @@ export function verifiedBundleSource(options: {
   env: Record<string, string | undefined>;
   exists: (path: string) => boolean;
 }): string;
+export function stripSourceMapComment(text: string): string;

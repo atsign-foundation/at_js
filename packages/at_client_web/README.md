@@ -167,7 +167,7 @@ npm run docs:api   # writes docs/api/
 
 ## Development
 
-The package ships a dart2js bundle (the bridge) built from [`packages/at_client_wasm`](https://github.com/atsign-foundation/at_client_sdk/tree/trunk/packages/at_client_wasm) in `atsign-foundation/at_client_sdk`. This repository pins one released bridge in `bridge.ref` (a release tag and the bundle's sha256); the bundle is not committed.
+The package ships a dart2js bundle (the bridge) built from [`packages/at_client_wasm`](https://github.com/atsign-foundation/at_client_sdk/tree/trunk/packages/at_client_wasm) in `atsign-foundation/at_client_sdk`. This repository pins one released bridge in `bridge.ref` (a release tag and the bundle's sha256); the bundle is not committed. The copy step strips the bundle's trailing `sourceMappingURL` comment because the release ships no map and the file is renamed to `at_client.js`.
 
 ```sh
 npm ci                 # from the repository root; the package is an npm workspace

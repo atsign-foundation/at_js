@@ -5,3 +5,4 @@ test-results/
 playwright-report/
 docs/api/
 .bridge/
+e2e/runs/

@@ -9,7 +9,8 @@
  *
  * Each run is a `test.describe.serial` group repeated `VE_RUNS` times (five by
  * default). Context A carries alice and context B bob. Before the first
- * `create` of a context, `warm` pre-navigates that atServer's origin.
+ * `create` of a context, `warm` optionally pre-navigates that atServer's origin
+ * (off by default; `VE_PRENAVIGATE=1`).
  */
 import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';

@@ -1,25 +1,27 @@
 /**
- * Pre-navigates an atServer origin so Chromium caches its client-certificate
- * decision before the bridge opens a WebSocket to it.
+ * Optionally pre-navigates an atServer origin so Chromium caches its
+ * client-certificate decision before the bridge opens a WebSocket to it.
  *
  * The VE atServer sends a CertificateRequest on its TLS handshake; with no
- * cached decision Chromium cancels the WebSocket upgrade. A top-level
- * navigation to the origin, in the same browser context, records the decision.
- * The navigation is made on a second page, so the live page is not navigated
- * away, and its rejection is ignored: only the cached decision matters.
+ * cached decision Chromium cancels a cold WebSocket upgrade. The bridge now
+ * wakes the listener itself with a `wss`-only fetch pre-flight, so the suite
+ * runs without any navigation. A top-level navigation to the origin, in the
+ * same browser context, records the same decision. The navigation is made on a
+ * second page, so the live page is not navigated away, and its rejection is
+ * ignored: only the cached decision matters.
  *
- * This is the one place the construction lives. `VE_PRENAVIGATE=0` (or
- * `false`, `off`) turns it off, so a bridge-side pre-flight can be tried
- * without it; the default is on.
+ * This is the one place the construction lives. It is off by default;
+ * `VE_PRENAVIGATE=1` (or `true`, `on`) turns it on, for example to run
+ * against a bridge that predates the pre-flight.
  */
 import type { BrowserContext } from '@playwright/test';
 import { lookUp } from './env.mjs';
 
 const warmed = new WeakMap<BrowserContext, Set<string>>();
 
-/** Whether the pre-navigation is enabled (default on). */
+/** Whether the pre-navigation is enabled (default off). */
 export function prenavigateEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
-  return !['0', 'false', 'off'].includes((env.VE_PRENAVIGATE ?? '').toLowerCase());
+  return ['1', 'true', 'on'].includes((env.VE_PRENAVIGATE ?? '').toLowerCase());
 }
 
 /**

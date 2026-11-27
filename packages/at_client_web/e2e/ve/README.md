@@ -56,8 +56,11 @@ AT_VE_CERTS_DIR=<certs dir> npm run e2e:ve   # VE_RUNS=5 by default
 ```
 
 The atServer asks the browser for a client certificate during its TLS
-handshake, and Chromium cancels a WebSocket upgrade to such an origin unless a
-top-level navigation to the origin already cached the decision. The suite
-therefore opens `https://vip.ve.atsign.zone:<port>/` on a second page of the
-same context before the first `create` (`prenav.ts`). Set `VE_PRENAVIGATE=0`
-to switch this off, for example to try a bridge-side pre-flight instead.
+handshake, and Chromium cancels a cold WebSocket upgrade to such an origin. The
+bridge wakes the listener with a `wss`-only `fetch()` pre-flight before it
+opens the socket, so the suite makes no navigation to the atServer origin. Set
+`VE_PRENAVIGATE=1` to pre-navigate `https://vip.ve.atsign.zone:<port>/` on a
+second page of the same context before the first `create` (`prenav.ts`), for
+example against a bridge that predates the pre-flight. The bundle must be
+rebuilt into `dist/` (`AT_CLIENT_WEB_BUNDLE=<bridge bundle> npm run build`)
+before the run, or the suite exercises the previous bridge.

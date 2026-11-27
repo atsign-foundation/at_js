@@ -115,6 +115,7 @@ export interface Bridge {
 export type BridgeLoader = () => Promise<Bridge>;
 
 const bridgeGlobal = '__atsignAtClientWeb';
+const bundleLoadTimeoutMs = 60_000;
 const installTimeoutMs = 5_000;
 const installPollMs = 10;
 
@@ -133,18 +134,37 @@ function injectBundle(): Promise<Bridge> {
     const script = document.createElement('script');
     script.src = new URL('./dart/at_client.js', import.meta.url).href;
     script.async = true;
-    const fail = (message: string) => {
-      script.remove();
-      reject(new AtError(message, 'internal'));
+    let settled = false;
+    let loadTimer: ReturnType<typeof setTimeout> | undefined;
+    let pollTimer: ReturnType<typeof setTimeout> | undefined;
+    const settle = (outcome: () => void) => {
+      if (settled) return;
+      settled = true;
+      if (loadTimer !== undefined) clearTimeout(loadTimer);
+      if (pollTimer !== undefined) clearTimeout(pollTimer);
+      // `script.remove()` does not stop an in-flight script: a late `onload`
+      // must not start a poll that could install a second bridge.
+      script.onload = null;
+      script.onerror = null;
+      outcome();
     };
-    script.onerror = () => fail(`could not load ${script.src}`);
+    const fail = (message: string, code: 'internal' | 'timeout') =>
+      settle(() => {
+        script.remove();
+        reject(new AtError(message, code));
+      });
+    loadTimer = setTimeout(
+      () => fail('the bridge bundle did not load within 60 s', 'timeout'),
+      bundleLoadTimeoutMs,
+    );
+    script.onerror = () => fail(`could not load ${script.src}`, 'internal');
     script.onload = () => {
-      const deadline = Date.now() + installTimeoutMs;
+      const installDeadline = Date.now() + installTimeoutMs;
       const poll = () => {
         const bridge = installed();
-        if (bridge) resolve(bridge);
-        else if (Date.now() >= deadline) fail(`${script.src} did not install the bridge`);
-        else setTimeout(poll, installPollMs);
+        if (bridge) settle(() => resolve(bridge));
+        else if (Date.now() >= installDeadline) fail(`${script.src} did not install the bridge`, 'internal');
+        else pollTimer = setTimeout(poll, installPollMs);
       };
       poll();
     };

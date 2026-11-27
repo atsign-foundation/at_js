@@ -122,7 +122,7 @@ Every call rejects with an `AtError`. Branch on `error.code`, never on the messa
 |---|---|
 | `pkam_refused` | The atServer refused this enrollment's login |
 | `offline` | The client did not come online, or a `notify` could not reach the atServer |
-| `timeout` | A transport or atServer wait expired |
+| `timeout` | A transport or atServer wait expired; also the bridge bundle not downloading and installing within 60 s. On that expiry the script is removed and the next `create` loads the bundle again |
 | `notify_failed` | `notify` did not send the notification: its recipient was unreachable, its key was refused, or the atServer rejected it |
 | `onboarding_incomplete` | The enrollment started but did not finish |
 | `enrollment_denied` | The enrollment was denied, or an `approve`/`deny` id was unknown |

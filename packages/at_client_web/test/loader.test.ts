@@ -56,8 +56,8 @@ describe('the default loader', () => {
   function stubDocument() {
     const scripts: Array<{
       src: string;
-      onload?: () => void;
-      onerror?: () => void;
+      onload?: (() => void) | null;
+      onerror?: (() => void) | null;
       removed: boolean;
       remove: () => void;
     }> = [];
@@ -129,6 +129,76 @@ describe('the default loader', () => {
       await vi.advanceTimersByTimeAsync(10_000);
       await settled;
       expect(scripts[0]!.removed).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a bundle request that never loads rejects timeout after 60 s', async () => {
+    vi.useFakeTimers();
+    try {
+      const scripts = stubDocument();
+      const loading = loadBridge();
+      const settled = expect(loading).rejects.toMatchObject({
+        name: 'AtError',
+        code: 'timeout',
+        message: 'the bridge bundle did not load within 60 s',
+      });
+      await vi.advanceTimersByTimeAsync(60_000);
+      await settled;
+      expect(scripts[0]!.removed).toBe(true);
+      expect(scripts[0]!.onload).toBeNull();
+      expect(scripts[0]!.onerror).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a create after a timed-out bundle load injects the bundle again', async () => {
+    vi.useFakeTimers();
+    try {
+      const scripts = stubDocument();
+      const first = loadBridge();
+      const settled = expect(first).rejects.toMatchObject({ code: 'timeout' });
+      await vi.advanceTimersByTimeAsync(60_000);
+      await settled;
+
+      const second = loadBridge();
+      expect(scripts).toHaveLength(2);
+      vi.stubGlobal('__atsignAtClientWeb', fakeBridge);
+      scripts[1]!.onload!();
+      expect(await second).toBe(fakeBridge);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('the bundle deadline covers a slow download and the install', async () => {
+    vi.useFakeTimers();
+    try {
+      const slow = stubDocument();
+      const loading = loadBridge();
+      await vi.advanceTimersByTimeAsync(59_000);
+      slow[0]!.onload!();
+      await vi.advanceTimersByTimeAsync(500);
+      vi.stubGlobal('__atsignAtClientWeb', fakeBridge);
+      await vi.advanceTimersByTimeAsync(10);
+      await expect(loading).resolves.toBe(fakeBridge);
+      expect(slow[0]!.removed).toBe(false);
+
+      setBridgeLoader();
+      vi.unstubAllGlobals();
+      const late = stubDocument();
+      const expired = loadBridge();
+      const settled = expect(expired).rejects.toMatchObject({
+        code: 'timeout',
+        message: 'the bridge bundle did not load within 60 s',
+      });
+      await vi.advanceTimersByTimeAsync(59_900);
+      late[0]!.onload!();
+      await vi.advanceTimersByTimeAsync(100);
+      await settled;
+      expect(late[0]!.removed).toBe(true);
     } finally {
       vi.useRealTimers();
     }

@@ -79,6 +79,52 @@ export function attestationArgs(file) {
   ];
 }
 
+const GH_MIN_VERSION = '2.49.0';
+const ATTESTATION_FLAGS = ['--source-ref', '--deny-self-hosted-runners'];
+const GH_VERSION_LINE = /^gh version (\S+)/;
+
+function ghVersionOf(stdout) {
+  const line = String(stdout ?? '').split(/\r?\n/u)[0].trim();
+  const match = GH_VERSION_LINE.exec(line);
+  return match === null ? line || 'unknown' : match[1];
+}
+
+/**
+ * Fails before any download unless `run` can reach a gh that knows the
+ * `attestation verify` command and every flag we pass it. Probes capability
+ * rather than comparing a version number, so a later gh that adds flags still
+ * passes. Returns the gh version string.
+ */
+export function checkGh(run) {
+  let version;
+  try {
+    const result = run('gh', ['--version']);
+    if (result === null || typeof result !== 'object' || result.status !== 0) {
+      throw new Error('gh --version did not succeed');
+    }
+    version = ghVersionOf(result.stdout);
+  } catch {
+    throw new Error(`cannot run gh: install gh ${GH_MIN_VERSION} or later (https://cli.github.com)`);
+  }
+  let help;
+  try {
+    const result = run('gh', ['attestation', 'verify', '--help']);
+    if (result === null || typeof result !== 'object' || result.status !== 0) {
+      throw new Error('gh attestation verify --help did not succeed');
+    }
+    help = `${result.stdout ?? ''}${result.stderr ?? ''}`;
+  } catch {
+    throw new Error(`gh ${version} has no \`attestation\` command; upgrade to ${GH_MIN_VERSION} or later`);
+  }
+  const missing = ATTESTATION_FLAGS.filter((flag) => !help.includes(flag));
+  if (missing.length > 0) {
+    throw new Error(
+      `gh ${version} attestation verify is missing ${missing.join(', ')}; upgrade to ${GH_MIN_VERSION} or later`,
+    );
+  }
+  return version;
+}
+
 /**
  * The bundle to copy, checked against bridge.ref's sha256 unless
  * AT_CLIENT_WEB_BUNDLE names it (the caller then owns what it points at).

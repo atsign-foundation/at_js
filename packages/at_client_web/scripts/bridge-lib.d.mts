@@ -12,6 +12,13 @@ export function resolveBundleSource(options: {
   exists: (path: string) => boolean;
 }): string;
 export function attestationArgs(file: string): string[];
+export interface CommandResult {
+  status: number | null;
+  stdout?: string;
+  stderr?: string;
+}
+export type CommandRunner = (command: string, args: string[]) => CommandResult;
+export function checkGh(run: CommandRunner): string;
 export function verifiedBundleSource(options: {
   root: string;
   env: Record<string, string | undefined>;

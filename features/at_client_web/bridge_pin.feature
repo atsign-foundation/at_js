@@ -45,6 +45,30 @@ Feature: The build uses only the bridge release pinned in bridge.ref
     When the attestation check is built
     Then it names the release workflow, the trunk source ref and denies self-hosted runners
 
+  # Threats: forgery -- attestation stays mandatory, and a gh that cannot attest
+  # fails closed instead of skipping the check; impersonation -- the signer
+  # workflow and source ref are pinned literals, never taken from the release.
+
+  Scenario: fetch-bridge names a missing gh and the minimum version
+    Given no working gh on PATH
+    When the bridge is fetched
+    Then it fails naming gh 2.49.0 or later and downloads nothing
+
+  Scenario: fetch-bridge names a gh without the attestation command
+    Given a gh version 2.46.0 without an attestation command
+    When the bridge is fetched
+    Then it fails naming that version, the attestation command and the minimum version
+
+  Scenario: fetch-bridge names attestation flags this gh lacks
+    Given a gh whose attestation help omits a flag the check passes
+    When the bridge is fetched
+    Then it fails naming the missing flag
+
+  Scenario: fetch-bridge runs the attestation check with the pinned signer workflow
+    Given a pinned bridge.ref and a download that matches its sha256
+    When the bridge is fetched with an injected runner
+    Then it attests the file against the literal signer workflow, refs/heads/trunk and denies self-hosted runners
+
   # A publish re-derives dist/dart/at_client.js from the sha-checked bridge, so
   # forgery cannot ship an unverified bundle and a stale dist from an older pin
   # fails the byte comparison. Race and DoS are not applicable: the checks run

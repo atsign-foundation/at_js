@@ -1,43 +1,78 @@
 // Downloads the pinned bridge bundle, checks its sha256 against bridge.ref and
 // its build attestation, and leaves it in .bridge/at_client_web.js.
-import { execFileSync } from 'node:child_process';
+//
+// The body is fetchBridge({ run, root }) so tests can drive it offline with an
+// injected runner; the CLI below runs only when this file is the entry point.
+import { spawnSync } from 'node:child_process';
 import { mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   BRIDGE_ASSET,
   BRIDGE_REPO,
   attestationArgs,
+  checkGh,
   parseBridgeRef,
   verifyDownload,
 } from './bridge-lib.mjs';
 
-const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const outDir = resolve(root, '.bridge');
-const file = resolve(outDir, BRIDGE_ASSET);
+const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-function gh(...args) {
-  execFileSync('gh', args, { stdio: 'inherit' });
+function isProbe(args) {
+  return args[0] === '--version' || (args[0] === 'attestation' && args[1] === 'verify' && args[2] === '--help');
 }
 
-function download(tag) {
-  rmSync(file, { force: true });
-  mkdirSync(outDir, { recursive: true });
-  gh('release', 'download', tag, '-R', BRIDGE_REPO, '-p', BRIDGE_ASSET, '-D', outDir);
+/**
+ * The default runner: the capability probes capture their output, while the
+ * download and the attestation check inherit stdio so gh can report progress.
+ */
+function defaultRun(command, args) {
+  if (isProbe(args)) {
+    const result = spawnSync(command, args, { encoding: 'utf8' });
+    return { status: result.status, stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
+  }
+  const result = spawnSync(command, args, { stdio: 'inherit' });
+  return { status: result.status, stdout: '', stderr: '' };
 }
 
-function attest() {
-  gh(...attestationArgs(file));
+function requireGhSuccess(args, result) {
+  if (result === null || typeof result !== 'object' || result.status !== 0) {
+    const status = result?.status;
+    throw new Error(`gh ${args.join(' ')} failed${status === null || status === undefined ? '' : ` with status ${status}`}`);
+  }
 }
 
-try {
-  const ref = parseBridgeRef(readFileSync(resolve(root, 'bridge.ref'), 'utf8'));
-  download(ref.tag);
-  verifyDownload(file, ref.sha256);
-  attest();
-  console.error(`bridge ${ref.tag} verified: ${file}`);
-} catch (error) {
-  rmSync(file, { force: true });
-  console.error(error instanceof Error ? error.message : error);
-  process.exit(1);
+/**
+ * Checks that gh can attest, downloads the release pinned in `root`/bridge.ref,
+ * verifies its sha256 and its attestation, and returns the bundle's path. A
+ * failure anywhere deletes the partial file before it is rethrown.
+ */
+export function fetchBridge({ run, root }) {
+  const outDir = resolve(root, '.bridge');
+  const file = resolve(outDir, BRIDGE_ASSET);
+  try {
+    checkGh(run);
+    const ref = parseBridgeRef(readFileSync(resolve(root, 'bridge.ref'), 'utf8'));
+    rmSync(file, { force: true });
+    mkdirSync(outDir, { recursive: true });
+    const download = ['release', 'download', ref.tag, '-R', BRIDGE_REPO, '-p', BRIDGE_ASSET, '-D', outDir];
+    requireGhSuccess(download, run('gh', download));
+    verifyDownload(file, ref.sha256);
+    const attest = attestationArgs(file);
+    requireGhSuccess(attest, run('gh', attest));
+    return file;
+  } catch (error) {
+    rmSync(file, { force: true });
+    throw error;
+  }
+}
+
+if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  try {
+    const file = fetchBridge({ run: defaultRun, root: PACKAGE_ROOT });
+    console.error(`bridge verified: ${file}`);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : error);
+    process.exit(1);
+  }
 }

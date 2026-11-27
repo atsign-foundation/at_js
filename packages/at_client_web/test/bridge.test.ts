@@ -9,6 +9,7 @@ import {
   BRIDGE_SIGNER_WORKFLOW,
   BRIDGE_SOURCE_REF,
   attestationArgs,
+  checkGh,
   parseBridgeRef,
   resolveBundleSource,
   sha256Hex,
@@ -231,5 +232,132 @@ describe('attestationArgs', () => {
       '--deny-self-hosted-runners',
     ]);
     expect(BRIDGE_SOURCE_REF).toBe('refs/heads/trunk');
+  });
+});
+
+type CommandResult = { status: number | null; stdout?: string; stderr?: string };
+type CommandRunner = (command: string, args: string[]) => CommandResult;
+
+/** The attestation help a gh new enough to verify our bundle prints. */
+const ATTESTATION_HELP = [
+  'Verify the build provenance of artifacts',
+  '',
+  'USAGE',
+  '  gh attestation verify [<file-path> | oci://<image-uri>] [--owner|--repo] [flags]',
+  '',
+  'FLAGS',
+  '  -R, --repo string',
+  '      --signer-workflow string   Workflow that signed the artifact',
+  '      --source-ref string        Source ref the workflow ran on',
+  '      --deny-self-hosted-runners Deny artifacts built on self-hosted runners',
+].join('\n');
+
+function ok(stdout = ''): CommandResult {
+  return { status: 0, stdout, stderr: '' };
+}
+
+function messageFrom(fn: () => unknown): string {
+  try {
+    fn();
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+  throw new Error('expected the call to throw');
+}
+
+/** A runner that answers the capability probes and records every gh call. */
+function capableRunner(calls: string[][], help = ATTESTATION_HELP): CommandRunner {
+  return (_command, args) => {
+    calls.push(args);
+    if (args[0] === '--version') return ok('gh version 2.49.0 (2025-01-06)\n');
+    if (args[0] === 'attestation' && args[1] === 'verify' && args[2] === '--help') return ok(help);
+    if (args[0] === 'attestation' && args[1] === 'verify') return ok('verified');
+    throw new Error(`unexpected gh call: ${args.join(' ')}`);
+  };
+}
+
+describe('checkGh', () => {
+  it('fetch-bridge names a missing gh and the minimum version', () => {
+    const calls: string[][] = [];
+    const run: CommandRunner = (_command, args) => {
+      calls.push(args);
+      throw Object.assign(new Error('spawn gh ENOENT'), { code: 'ENOENT' });
+    };
+    expect(messageFrom(() => checkGh(run))).toMatch(/install gh 2\.49\.0 or later/);
+    expect(calls).toEqual([['--version']]);
+    expect(calls.some((args) => args[0] === 'release')).toBe(false);
+  });
+
+  it('fetch-bridge names a gh without the attestation command', () => {
+    const calls: string[][] = [];
+    const run: CommandRunner = (_command, args) => {
+      calls.push(args);
+      if (args[0] === '--version') return ok('gh version 2.46.0 (2024-05-01)\n');
+      return { status: 1, stdout: '', stderr: 'unknown command "attestation" for "gh"\n' };
+    };
+    const message = messageFrom(() => checkGh(run));
+    expect(message).toMatch(/2\.46\.0/);
+    expect(message).toMatch(/attestation/);
+    expect(message).toMatch(/2\.49\.0 or later/);
+  });
+
+  it('fetch-bridge names attestation flags this gh lacks', () => {
+    const withoutDeny = ATTESTATION_HELP.replace(/^.*--deny-self-hosted-runners.*(?:\n|$)/m, '');
+    const withoutSourceRef = ATTESTATION_HELP.replace(/^.*--source-ref.*(?:\n|$)/m, '');
+    expect(messageFrom(() => checkGh(capableRunner([], withoutDeny)))).toContain('--deny-self-hosted-runners');
+    expect(messageFrom(() => checkGh(capableRunner([], withoutSourceRef)))).toContain('--source-ref');
+  });
+
+  it('returns the version of a gh that can attest', () => {
+    expect(checkGh(capableRunner([]))).toBe('2.49.0');
+  });
+});
+
+describe('fetchBridge', () => {
+  const bundle = 'bridge bundle\n';
+
+  /** A package root pinning `bundle` and a runner whose download writes it. */
+  function root(): string {
+    const dir = tmp();
+    writeFileSync(join(dir, 'bridge.ref'), JSON.stringify({ tag, sha256: sha256Hex(Buffer.from(bundle)) }));
+    return dir;
+  }
+
+  async function loadFetchBridge(): Promise<(options: { run: CommandRunner; root: string }) => string> {
+    const moduleUrl = new URL('../scripts/fetch-bridge.mjs', import.meta.url).href;
+    const module = await import(moduleUrl);
+    return module.fetchBridge as (options: { run: CommandRunner; root: string }) => string;
+  }
+
+  it('fetch-bridge runs the attestation check with the pinned signer workflow', async () => {
+    const fetchBridge = await loadFetchBridge();
+    const dir = root();
+    const calls: string[][] = [];
+    const run: CommandRunner = (_command, args) => {
+      calls.push(args);
+      if (args[0] === '--version') return ok('gh version 2.49.0 (2025-01-06)\n');
+      if (args[0] === 'attestation' && args[2] === '--help') return ok(ATTESTATION_HELP);
+      if (args[0] === 'release' && args[1] === 'download') {
+        const outDir = args[args.indexOf('-D') + 1] as string;
+        const asset = args[args.indexOf('-p') + 1] as string;
+        mkdirSync(outDir, { recursive: true });
+        writeFileSync(join(outDir, asset), bundle);
+        return ok();
+      }
+      if (args[0] === 'attestation' && args[1] === 'verify') return ok('verified');
+      throw new Error(`unexpected gh call: ${args.join(' ')}`);
+    };
+
+    const file = fetchBridge({ run, root: dir });
+
+    expect(file).toBe(join(dir, '.bridge', 'at_client_web.js'));
+    expect(readFileSync(file, 'utf8')).toBe(bundle);
+    const attest = calls.filter((args) => args[0] === 'attestation' && args[1] === 'verify' && args[2] !== '--help');
+    expect(attest).toHaveLength(1);
+    const args = attest[0] as string[];
+    expect(args).toContain('atsign-foundation/at_client_sdk/.github/workflows/at_client_web_bridge_release.yaml');
+    expect(args).toContain('--source-ref');
+    expect(args[args.indexOf('--source-ref') + 1]).toBe('refs/heads/trunk');
+    expect(args).toContain('--deny-self-hosted-runners');
   });
 });

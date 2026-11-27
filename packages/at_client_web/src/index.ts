@@ -325,6 +325,7 @@ export class AtClient {
    * subscription ends, buffered events are discarded, and `next()` rejects
    * with `AtError('overflow')`; subscribe again. An error on the
    * notification stream rejects one `next()` and the stream carries on.
+   * A notification without a verified `@atSign` sender is not delivered.
    * Without `regex` it matches the client's namespace. Throws
    * `AtError('closed')` after `close()`.
    */

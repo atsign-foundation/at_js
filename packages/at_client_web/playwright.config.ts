@@ -31,7 +31,7 @@ export default defineConfig({
     launchOptions: { args: ['--host-resolver-rules=MAP insecure.test 127.0.0.1'] },
   },
   // The keyless real-bridge suite, and the only one `npm run e2e` runs. The
-  // gated `live` and `ve` suites add their own projects.
+  // gated `live` suite adds its own project.
   projects: [bridgeProject, liveProject],
   webServer:
     externalBaseURL === undefined

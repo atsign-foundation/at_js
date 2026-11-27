@@ -65,6 +65,16 @@ function required(value: string | undefined, name: string): string {
   return value;
 }
 
+/**
+ * An atSign in canonical form: lowercase, one leading `@`, and no `.`
+ * characters after it. `AtClient.create` lowercases the atSign, so assertions
+ * compare canonical forms while raw values still go to `create` and `notify`.
+ */
+function canonicalAtSign(value: string): string {
+  const sign = value.startsWith('@') ? value : `@${value}`;
+  return sign.toLowerCase().replace(/\./g, '');
+}
+
 /** Calls `window.live.<method>(...args)`; no key text is ever an argument. */
 function live<R>(page: Page, method: string, ...args: unknown[]): Promise<R> {
   return page.evaluate(
@@ -173,8 +183,23 @@ function describeRun(runId: string, index: number): void {
     }
 
     test.afterAll(async () => {
+      // The scan runs here, before the contexts close, so it also runs when an
+      // earlier serial test failed. A skipped suite has no keys to scan.
+      let hits: string[] = [];
+      if (!gated) {
+        const keysDoc = JSON.parse(readFileSync(required(keysPath, 'AT_KEYS_FILE'), 'utf8')) as unknown;
+        const texts = [...consoleLines];
+        for (const file of filesUnder(join(PKG, 'test-results'))) {
+          texts.push(readFileSync(file, 'utf8'));
+        }
+        hits = scanForSecrets(keysDoc, texts);
+      }
       await contextA?.close();
       await contextB?.close();
+      // Field names only: a hit is reported without any value.
+      if (hits.length > 0) {
+        throw new Error(`key fields found in artefacts or console: ${hits.join(', ')}`);
+      }
     });
 
     test('live: create A and B through the keys file input', async ({ browser }) => {
@@ -227,7 +252,7 @@ function describeRun(runId: string, index: number): void {
       const events = await live<LiveEvent[]>(b, 'received');
       const first = events[0];
       expect(first).toBeDefined();
-      expect(first?.from).toBe(sign);
+      expect(first?.from).toBe(canonicalAtSign(sign));
       expect(first?.key.sharedBy).toBe(first?.from);
       expect(first?.key.key).toBe(key);
       expect(first?.value).toBe(value);
@@ -251,7 +276,7 @@ function describeRun(runId: string, index: number): void {
       const data = { label: 'live', n: 1 };
       const created = await live<LiveItem>(a, 'createItem', data);
       expect(created.id).not.toBe('');
-      expect(created.owner).toBe(required(atSign, 'AT_SIGN'));
+      expect(created.owner).toBe(canonicalAtSign(required(atSign, 'AT_SIGN')));
       expect(created.data).toEqual(data);
 
       const got = await live<LiveItem | null>(a, 'getItem', created.id);
@@ -326,28 +351,19 @@ function describeRun(runId: string, index: number): void {
     test('live: close is idempotent and later calls reject closed', async () => {
       const { a, b } = pages();
       const sign = required(atSign, 'AT_SIGN');
+      // Best effort: cleanup needs an open session, so it runs before the close.
+      const leftovers = await live<number>(a, 'cleanup', `live${runId}`, collectionOptions);
+      test.info().annotations.push({
+        type: 'cleanup',
+        description: `removed ${leftovers} leftover item(s)`,
+      });
       await live(a, 'close');
       await live(a, 'close');
       await live(b, 'close');
       expect(await live(a, 'afterClose', sign)).toEqual({ notify: 'closed', subscribe: 'closed' });
     });
 
-    test('live: no key material reaches an artefact or the console and the run is recorded', async () => {
-      const { a } = pages();
-      // Best effort: everything this run created is removed before the scan.
-      const leftovers = await live<number>(a, 'cleanup', `live${runId}`, collectionOptions);
-      test.info().annotations.push({
-        type: 'cleanup',
-        description: `removed ${leftovers} leftover item(s)`,
-      });
-
-      const keysDoc = JSON.parse(readFileSync(required(keysPath, 'AT_KEYS_FILE'), 'utf8')) as unknown;
-      const texts = [...consoleLines];
-      for (const file of filesUnder(join(PKG, 'test-results'))) texts.push(readFileSync(file, 'utf8'));
-      const hits = scanForSecrets(keysDoc, texts);
-      // Field names only: a hit is reported without any value.
-      expect(hits, `key fields found in artefacts or console: ${hits.join(', ')}`).toEqual([]);
-
+    test('live: the run is recorded', async () => {
       const finishedAt = Date.now();
       const record = {
         runId,

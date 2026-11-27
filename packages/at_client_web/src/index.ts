@@ -85,6 +85,22 @@ export interface AtKey {
   noNamespace?: boolean;
 }
 
+/**
+ * What `notify` sends: a `sharedWith` atSign and the key to send it, with no
+ * `sharedBy`, `public` or `cached` field. The owner is always the session
+ * atSign; `AtKey` is what a `subscribe` event carries.
+ */
+export interface NotifyKey {
+  /** The key's name: no `@`, `:` or whitespace, and no leading or trailing `.`. */
+  key: string;
+  /** The atSign to notify: one `@atSign`, with no `:` or whitespace. Required. */
+  sharedWith: `@${string}`;
+  /** The namespace that qualifies the key; the client's when left out. One segment. */
+  namespace?: string;
+  /** Send the key with no namespace; a `namespace` beside it is ignored. */
+  noNamespace?: true;
+}
+
 /** One notification delivered to a `subscribe` iterator. */
 export interface AtEvent {
   /** What happened to the key. */
@@ -262,12 +278,14 @@ export class AtClient {
    * resolving true once it was delivered.
    *
    * The key is sent as atKey text, `[@recipient:]name[.namespace]@owner`:
-   * the namespace is the key's own or the session's unless `noNamespace` is
-   * set, and the owner is the key's `sharedBy` or the session's atSign. A
-   * `public` or `cached` key cannot be sent and rejects `invalid_argument`
-   * naming the flag.
+   * `sharedWith` is required; the namespace is the key's own or the session's
+   * unless `noNamespace` is set; the owner is always the session's atSign.
+   * Any malformed field — a name with a delimiter, a `sharedWith` that is not
+   * one `@atSign`, a `namespace` that is not one segment, a `sharedBy` that is
+   * not the session atSign, or a truthy `public` or `cached` flag — rejects
+   * `invalid_argument` naming `NotifyKey.<field>` before anything is sent.
    */
-  notify(key: AtKey, value: string): Promise<boolean> {
+  notify(key: NotifyKey, value: string): Promise<boolean> {
     return this.bridgedOpen(() =>
       this.session.notify(toKeyText(key, this.namespace, this.atSign), value),
     );

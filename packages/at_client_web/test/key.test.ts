@@ -9,10 +9,19 @@ describe('toKeyText', () => {
     expect(toKeyText({ key: 'note', sharedWith: '@bob' }, 'wavi', self)).toBe('@bob:note.wavi@alice');
   });
 
-  it('keeps an explicit namespace, lowercased, and an explicit owner', () => {
+  it('notify with a sharedBy other than the session atSign rejects invalid_argument and sends nothing', () => {
     expect(
-      toKeyText({ key: 'k', namespace: 'Other', sharedWith: '@bob', sharedBy: '@carol' }, 'wavi', self),
-    ).toBe('@bob:k.other@carol');
+      refusal({ key: 'k', namespace: 'Other', sharedWith: '@bob', sharedBy: '@carol' } as never),
+    ).toMatchObject({
+      code: 'invalid_argument',
+      message: 'NotifyKey.sharedBy: must be the session atSign',
+    });
+  });
+
+  it('notify accepts a sharedBy equal to the session atSign in any case', () => {
+    expect(
+      toKeyText({ key: 'k', sharedWith: '@bob', sharedBy: '@ALICE' } as never, 'wavi', self),
+    ).toBe('@bob:k.wavi@alice');
   });
 
   it('adds no namespace, and ignores a given one, when noNamespace is true', () => {
@@ -22,22 +31,55 @@ describe('toKeyText', () => {
     ).toBe('@bob:k@alice');
   });
 
-  it('leaves off a recipient that is not given, for the bridge to refuse', () => {
-    expect(toKeyText({ key: 'k' }, 'wavi', self)).toBe('k.wavi@alice');
-  });
-
   it('refuses a public key, naming the flag', () => {
-    expect(refusal({ key: 'k', sharedWith: '@bob', public: true })).toMatchObject({
+    expect(refusal({ key: 'k', sharedWith: '@bob', public: true } as never)).toMatchObject({
       code: 'invalid_argument',
-      message: 'AtKey.public: cannot be sent in a notification',
+      message: 'NotifyKey.public: cannot be sent in a notification',
     });
   });
 
   it('refuses a cached key, naming the flag', () => {
-    expect(refusal({ key: 'k', sharedWith: '@bob', cached: true })).toMatchObject({
+    expect(refusal({ key: 'k', sharedWith: '@bob', cached: true } as never)).toMatchObject({
       code: 'invalid_argument',
-      message: 'AtKey.cached: cannot be sent in a notification',
+      message: 'NotifyKey.cached: cannot be sent in a notification',
     });
+  });
+
+  it('notify refuses a truthy public or cached flag', () => {
+    const cases: Array<[Record<string, unknown>, string]> = [
+      [{ key: 'k', sharedWith: '@bob', public: true }, 'NotifyKey.public'],
+      [{ key: 'k', sharedWith: '@bob', public: 1 }, 'NotifyKey.public'],
+      [{ key: 'k', sharedWith: '@bob', public: 'yes' }, 'NotifyKey.public'],
+      [{ key: 'k', sharedWith: '@bob', cached: true }, 'NotifyKey.cached'],
+      [{ key: 'k', sharedWith: '@bob', cached: 1 }, 'NotifyKey.cached'],
+      [{ key: 'k', sharedWith: '@bob', cached: 'yes' }, 'NotifyKey.cached'],
+    ];
+    for (const [key, field] of cases) {
+      expect(refusal(key as never)).toMatchObject({
+        code: 'invalid_argument',
+        message: `${field}: cannot be sent in a notification`,
+      });
+    }
+  });
+
+  it('notify refuses delimiters in key parts with invalid_argument naming the field', () => {
+    const cases: Array<[Record<string, unknown>, string]> = [
+      [{ key: 'k', sharedWith: '@bob', sharedBy: 'x@alice' }, 'NotifyKey.sharedBy'],
+      [{ key: 'k', sharedWith: '@bob', namespace: 'a.b' }, 'NotifyKey.namespace'],
+      [{ key: 'a@b', sharedWith: '@bob' }, 'NotifyKey.key'],
+      [{ key: 'a:b', sharedWith: '@bob' }, 'NotifyKey.key'],
+      [{ key: '.k', sharedWith: '@bob' }, 'NotifyKey.key'],
+      [{ key: 'k.', sharedWith: '@bob' }, 'NotifyKey.key'],
+      [{ key: 'a b', sharedWith: '@bob' }, 'NotifyKey.key'],
+      [{ key: 'k', sharedWith: 'bob' }, 'NotifyKey.sharedWith'],
+      [{ key: 'k', sharedWith: '@a@b' }, 'NotifyKey.sharedWith'],
+      [{ key: 'k', sharedWith: '@a:b' }, 'NotifyKey.sharedWith'],
+    ];
+    for (const [key, field] of cases) {
+      const error = refusal(key as never);
+      expect(error.code).toBe('invalid_argument');
+      expect(error.message.startsWith(`${field}:`)).toBe(true);
+    }
   });
 
   function refusal(key: Parameters<typeof toKeyText>[0]): AtError {

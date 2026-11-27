@@ -1,10 +1,18 @@
+# Threats: forgery and impersonation are refused locally (a sharedBy that is
+# not the session atSign is rejected, and the owner is always the session's)
+# and again by the bridge. There is no replay or race surface: composing the
+# atKey text is a pure function. DoS is bounded by the bridge's 248-character
+# key validator.
+
 Feature: notify sends to another atSign and subscribe delivers only genuine events
 
   notify sends a value on a key shared with another atSign and resolves true
   when it was delivered. The key is sent as atKey text — the recipient, the
-  key with its namespace, and the owner — built from the AtKey and the
-  session's namespace and atSign; a public or cached key is refused locally.
-  subscribe registers when called and hands the app
+  key with its namespace, and the owner — built from the NotifyKey and the
+  session's namespace and atSign; sharedWith is required, the owner is always
+  the session atSign, and a malformed field is refused locally with
+  invalid_argument naming NotifyKey.<field>. subscribe registers when called
+  and hands the app
   events as an async iterator. A notification this session sent, or one whose
   key owner is not its sender, is never delivered. The iterator buffers up to
   4096 events; past that it ends and its next() rejects overflow.
@@ -14,32 +22,56 @@ Feature: notify sends to another atSign and subscribe delivers only genuine even
     When notify is called on key k shared with @bob without a namespace
     Then the bridge is called with @bob:k.tally@alice and the value
 
-  Scenario: notify keeps an explicit namespace and owner
+  Scenario: notify with a sharedBy other than the session atSign rejects invalid_argument and sends nothing
     Given an open session in namespace tally, as @alice
     When notify is called on key k with namespace other, shared with @bob by @carol
-    Then the bridge is called with @bob:k.other@carol and the value
+    Then it rejects with AtError code invalid_argument naming NotifyKey.sharedBy
+    And the bridge is not asked to notify
+
+  Scenario: notify accepts a sharedBy equal to the session atSign in any case
+    Given an open session in namespace tally, as @alice
+    When notify is called on key k shared with @bob by @ALICE
+    Then the bridge is called with @bob:k.tally@alice and the value
+
+  Scenario: notify without sharedWith rejects invalid_argument naming NotifyKey.sharedWith and sends nothing
+    Given an open session
+    When notify is called on key k with no sharedWith
+    Then it rejects with AtError code invalid_argument naming NotifyKey.sharedWith
+    And the bridge is not asked to notify
 
   Scenario: notify with noNamespace sends the key with no namespace
     Given an open session in namespace tally, as @alice
     When notify is called on key k shared with @bob with noNamespace true and namespace other
     Then the bridge is called with @bob:k@alice and the value
 
+  Scenario: notify refuses delimiters in key parts with invalid_argument naming the field
+    Given an open session
+    When notify is called with an @, ':' or whitespace in the key name, a namespace that is not one word, or a sharedWith or sharedBy that is not one @atSign
+    Then each rejects with AtError code invalid_argument naming NotifyKey.<field>
+    And the bridge is not asked to notify
+
+  Scenario: notify refuses a truthy public or cached flag
+    Given an open session
+    When notify is called with public or cached set to a truthy value
+    Then each rejects with AtError code invalid_argument naming NotifyKey.public or NotifyKey.cached
+    And the bridge is not asked to notify
+
   Scenario: notify with a public or cached key rejects invalid_argument naming the flag and sends nothing
     Given an open session
     When notify is called with public true or cached true
-    Then each rejects with AtError code invalid_argument naming the flag
+    Then each rejects with AtError code invalid_argument naming NotifyKey.public or NotifyKey.cached
     And the bridge is not asked to notify
 
   Scenario: notify with an empty or non-string key part rejects invalid_argument naming the field and sends nothing
     Given an open session
-    When notify is called with an empty or non-string key name, sharedWith, sharedBy or namespace
-    Then each rejects with AtError code invalid_argument naming AtKey.<field>
+    When notify is called with an empty or non-string key name, sharedWith or namespace
+    Then each rejects with AtError code invalid_argument naming NotifyKey.<field>
     And the bridge is not asked to notify
 
-  Scenario: notify with a key that is not a plain object rejects invalid_argument naming AtKey and sends nothing
+  Scenario: notify with a key that is not a plain object rejects invalid_argument naming NotifyKey and sends nothing
     Given an open session
     When notify is called with a null, undefined or non-object key
-    Then it rejects with AtError code invalid_argument naming AtKey
+    Then it rejects with AtError code invalid_argument naming NotifyKey
     And the bridge is not asked to notify
 
   Scenario: a subscription that buffers past the cap unsubscribes and rejects with overflow

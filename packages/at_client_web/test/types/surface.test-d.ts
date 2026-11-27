@@ -1,6 +1,7 @@
 // Compiled by `npm run typecheck` against dist/index.d.ts; it has no runtime.
 // It pins the exported surface so a signature change shows up here.
 import type * as impl from '../../dist/index.js';
+import type { NotifyKey } from '../../dist/index.js';
 import { AtClient } from '../../dist/index.js';
 
 declare const client: impl.AtClient;
@@ -46,6 +47,17 @@ export const ancestor: impl.Ancestor = { id: 'p1', subName: 'comments', owner: n
 void client.collection<string>('x', { type: 't' });
 
 export const notified: Promise<boolean> = client.notify({ key: 'k', sharedWith: '@b' }, 'v');
+export const notifyKey: NotifyKey = { key: 'k', sharedWith: '@b' };
+// @ts-expect-error sharedWith is required
+void client.notify({ key: 'k' }, 'v');
+// @ts-expect-error sharedBy is not a notify key field
+void client.notify({ key: 'k', sharedWith: '@b', sharedBy: '@a' }, 'v');
+// @ts-expect-error public is not a notify key field
+void client.notify({ key: 'k', sharedWith: '@b', public: true }, 'v');
+// @ts-expect-error cached is not a notify key field
+void client.notify({ key: 'k', sharedWith: '@b', cached: true }, 'v');
+// @ts-expect-error sharedWith must start with @
+void client.notify({ key: 'k', sharedWith: 'b' }, 'v');
 export const publicKey: impl.AtKey = { key: 'k', sharedWith: '@b', public: true };
 export const cachedKey: impl.AtKey = { key: 'k', sharedWith: '@b', cached: true };
 export const events: AsyncIterable<impl.AtEvent> = client.subscribe('regex');

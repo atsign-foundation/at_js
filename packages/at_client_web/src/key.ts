@@ -1,45 +1,82 @@
 import { AtError } from './error.js';
-import type { AtKey } from './index.js';
+import type { AtKey, NotifyKey } from './index.js';
 
 /** [value] when it is a non-empty string; throws `invalid_argument` naming [field] otherwise. */
-function text(value: unknown, field: string): string {
+function part(value: unknown, field: string): string {
   if (typeof value !== 'string' || value === '') {
-    throw new AtError(`AtKey.${field}: must be a non-empty string`, 'invalid_argument');
+    throw new AtError(`NotifyKey.${field}: must be a non-empty string`, 'invalid_argument');
   }
   return value;
+}
+
+/** [value] when it is a key name with no delimiter and no leading or trailing dot. */
+function name(value: unknown): string {
+  const key = part(value, 'key');
+  if (/[@:\s\x00-\x1f\x7f]/.test(key) || key.startsWith('.') || key.endsWith('.')) {
+    throw new AtError(
+      "NotifyKey.key: must have no '@', ':' or whitespace and no leading or trailing '.'",
+      'invalid_argument',
+    );
+  }
+  return key;
+}
+
+/** [value] when it is one `@atSign`, with no further `@`, `:` or whitespace. */
+function recipient(value: unknown): string {
+  const sharedWith = part(value, 'sharedWith');
+  if (!/^@[^@:\s]+$/.test(sharedWith)) {
+    throw new AtError(
+      "NotifyKey.sharedWith: must be one @atSign with no ':' or whitespace",
+      'invalid_argument',
+    );
+  }
+  return sharedWith;
+}
+
+/** [value] when it is one namespace segment. */
+function segment(value: unknown): string {
+  const namespace = part(value, 'namespace');
+  if (!/^\w+$/.test(namespace)) {
+    throw new AtError("NotifyKey.namespace: must be one word of letters, digits or '_'", 'invalid_argument');
+  }
+  return namespace;
 }
 
 /**
  * The atKey text `notify` takes for [key]:
  * `[@recipient:]name[.namespace]@owner`.
  *
- * The namespace is [key.namespace] (lowercased), else [namespace]; it is left
- * off when [key.noNamespace] is true, and a namespace given beside that flag
- * is ignored. The owner is [key.sharedBy], else [atSign]. A `public` or
- * `cached` key cannot be sent as a notification, and throws `AtError`
- * `invalid_argument` naming the flag; a key part that is empty or not a
- * string — the name, `sharedWith`, `sharedBy` or a used `namespace` — throws
- * it naming the field; a [key] that is not an object throws it naming `AtKey`.
+ * `sharedWith` is required. The namespace is [key.namespace] (lowercased),
+ * else [namespace]; it is left off when [key.noNamespace] is true, and a
+ * namespace given beside that flag is ignored and not validated. The owner is
+ * always [atSign], the session atSign. A field mistake throws `AtError`
+ * `invalid_argument` naming `NotifyKey.<field>`: a name with `@`, `:` or
+ * whitespace, or a leading or trailing dot; a `sharedWith` that is not one
+ * `@atSign`; a `namespace` that is not one segment; a `sharedBy` that is not
+ * the session atSign; or a truthy `public` or `cached` flag. A [key] that is
+ * not an object throws it naming `NotifyKey`.
  */
-export function toKeyText(key: AtKey, namespace: string, atSign: string): string {
+export function toKeyText(key: NotifyKey, namespace: string, atSign: string): string {
   if (typeof key !== 'object' || key === null || Array.isArray(key)) {
-    throw new AtError('AtKey: must be an object', 'invalid_argument');
+    throw new AtError('NotifyKey: must be an object', 'invalid_argument');
   }
-  if (key.public === true) {
-    throw new AtError('AtKey.public: cannot be sent in a notification', 'invalid_argument');
+  const input = key as NotifyKey & { sharedBy?: unknown; public?: unknown; cached?: unknown };
+  if (input.public) {
+    throw new AtError('NotifyKey.public: cannot be sent in a notification', 'invalid_argument');
   }
-  if (key.cached === true) {
-    throw new AtError('AtKey.cached: cannot be sent in a notification', 'invalid_argument');
+  if (input.cached) {
+    throw new AtError('NotifyKey.cached: cannot be sent in a notification', 'invalid_argument');
   }
-  const name = text(key.key, 'key');
-  const sharedWith = key.sharedWith === undefined ? undefined : text(key.sharedWith, 'sharedWith');
-  const sharedBy = key.sharedBy === undefined ? undefined : text(key.sharedBy, 'sharedBy');
-  const recipient = sharedWith === undefined ? '' : `${sharedWith}:`;
+  const keyName = name(input.key);
+  const sharedWith = recipient(input.sharedWith);
+  if (input.sharedBy !== undefined && part(input.sharedBy, 'sharedBy').toLowerCase() !== atSign.toLowerCase()) {
+    throw new AtError('NotifyKey.sharedBy: must be the session atSign', 'invalid_argument');
+  }
   const qualified =
-    key.noNamespace === true
-      ? name
-      : `${name}.${(key.namespace === undefined ? namespace : text(key.namespace, 'namespace')).toLowerCase()}`;
-  return `${recipient}${qualified}${sharedBy ?? atSign}`;
+    input.noNamespace === true
+      ? keyName
+      : `${keyName}.${(input.namespace === undefined ? namespace : segment(input.namespace)).toLowerCase()}`;
+  return `${sharedWith}:${qualified}${atSign}`;
 }
 
 /**

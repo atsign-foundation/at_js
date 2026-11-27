@@ -33,7 +33,7 @@ await client.close();
 
 | Option | Meaning |
 |---|---|
-| `atSign` | The atSign the keys belong to |
+| `atSign` | The atSign the keys belong to. Must start with `@`, with no whitespace or `:`; passed to the bridge unchanged, not normalised by JS |
 | `namespace` | Required. The one grant name: it scopes every key and is the namespace the session asks the atServer for. The client lowercases it for its own keys and subscriptions; the session is asked for it as given |
 | `keys` | The `.atKeys` document. Required unless `passkey` is `true` |
 | `passkey` | Optional `true`. Signs in with a platform passkey instead of a `.atKeys` document; requires `rpId` and `rpName`, and cannot be combined with `keys` |

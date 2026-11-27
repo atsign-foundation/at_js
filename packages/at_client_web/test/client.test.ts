@@ -66,7 +66,7 @@ function browser(overrides: { isSecureContext?: boolean } = {}) {
 }
 
 const keys = '{"@alice":{}}';
-const opts = { atSign: '@alice', namespace: 'tally', keys };
+const opts = { atSign: '@alice' as const, namespace: 'tally', keys };
 
 let fake: ReturnType<typeof fakeSession>;
 let bridge: ReturnType<typeof fakeBridge>;
@@ -196,6 +196,15 @@ describe('create', () => {
       const error = await rejection(AtClient.create({ ...opts, atSign: bad } as never));
       expect(error.code).toBe('invalid_argument');
       expect(error.message).toBe('AtClientOptions.atSign: must be a non-empty string');
+    }
+    expect(loader).not.toHaveBeenCalled();
+  });
+
+  it('create with an atSign that does not start with @ rejects invalid_argument before loading the bridge', async () => {
+    for (const bad of ['alice', '@', '@al ice', '@a:b', ' @alice']) {
+      const error = await rejection(AtClient.create({ ...opts, atSign: bad } as never));
+      expect(error.code).toBe('invalid_argument');
+      expect(error.message).toMatch(/^AtClientOptions\.atSign/);
     }
     expect(loader).not.toHaveBeenCalled();
   });
@@ -639,6 +648,11 @@ describe('status', () => {
     expect(bridge.create.mock.calls.at(-1)![0].atSign).toBe('@Alice');
     await client.notify({ key: 'k', sharedWith: '@bob' }, 'v');
     expect(fake.session.notify).toHaveBeenCalledWith('@bob:k.tally@alice', 'v');
+  });
+
+  it('create passes a dotted or mixed-case atSign to the bridge unchanged', async () => {
+    await AtClient.create({ ...opts, atSign: '@Bob.Smith' });
+    expect(bridge.create.mock.calls.at(-1)![0].atSign).toBe('@Bob.Smith');
   });
 
   it('every closed rejection from the client says the session is closed', async () => {

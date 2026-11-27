@@ -23,6 +23,8 @@ export const keysCreate: Promise<impl.AtClient> = AtClient.create({
 void AtClient.create({ atSign: '@alice', namespace: 'tally' });
 // @ts-expect-error passkey is true when given, never false
 void AtClient.create({ atSign: '@alice', namespace: 'tally', passkey: false });
+// @ts-expect-error atSign must start with @
+void AtClient.create({ atSign: 'alice', namespace: 'tally', keys: '{}' });
 // @ts-expect-error keys cannot be combined with passkey: true
 void AtClient.create({ atSign: '@alice', namespace: 'tally', keys: '{}', passkey: true, rpId: 'example.com', rpName: 'Tally' });
 export const status: impl.ConnectionStatus = client.status;

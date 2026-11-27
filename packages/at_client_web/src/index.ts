@@ -26,8 +26,13 @@ export type {
 
 /** The fields every `AtClient.create` takes to name the atSign and its scope. */
 interface AtClientSharedOptions {
-  /** The atSign to open, such as `@alice`. */
-  atSign: string;
+  /**
+   * The atSign to open, such as `@alice`. Must start with `@`, have more than
+   * that one character, and contain no whitespace or `:`; anything else is
+   * rejected with `invalid_argument` naming `AtClientOptions.atSign`. Passed
+   * to the bridge unchanged, not normalised here.
+   */
+  atSign: `@${string}`;
   /**
    * Required at runtime: it scopes every key this client reads and writes, and
    * names the enrollment's app; `bridgeOptions` rejects a missing or empty one
@@ -161,6 +166,12 @@ function bridgeOptions(opts: AtClientOptions): BridgeOptions {
     throw new AtError('AtClientOptions: must be an object', 'invalid_argument');
   }
   const atSign = requireString(opts.atSign, 'AtClientOptions.atSign: must be a non-empty string');
+  if (!atSign.startsWith('@') || atSign.length < 2 || /[\s:]/.test(atSign)) {
+    throw new AtError(
+      "AtClientOptions.atSign: must start with @ and contain no whitespace or ':'",
+      'invalid_argument',
+    );
+  }
   const namespace = requireString(
     opts.namespace,
     'AtClientOptions.namespace: must be a non-empty string',

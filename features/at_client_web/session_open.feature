@@ -1,3 +1,7 @@
+# Threats: impersonation is the only surface here: the session atSign is the
+# only owner ever composed, and the bridge re-canonicalises it. Forgery,
+# replay, race and DoS do not apply to a synchronous option check.
+
 Feature: A browser opens an atSign session only where it safely can
 
   AtClient.create opens a session from an atSign's .atKeys document, or
@@ -19,6 +23,13 @@ Feature: A browser opens an atSign session only where it safely can
   Scenario: a missing or non-string atSign rejects invalid_argument before loading the bridge
     Given a secure page
     When create is called with an atSign that is not a non-empty string
+    Then it rejects with AtError code invalid_argument
+    And the message names AtClientOptions.atSign
+    And the Dart bundle has not been loaded
+
+  Scenario: create with an atSign that does not start with @ rejects invalid_argument before loading the bridge
+    Given a secure page
+    When create is called with an atSign that is alice, a bare @, or has whitespace or a colon
     Then it rejects with AtError code invalid_argument
     And the message names AtClientOptions.atSign
     And the Dart bundle has not been loaded
@@ -76,6 +87,11 @@ Feature: A browser opens an atSign session only where it safely can
     When create is called with the atSign @Alice and the client sends a notification
     Then the bridge was opened with @Alice
     And the notification key is under @alice
+
+  Scenario: create passes a dotted or mixed-case atSign to the bridge unchanged
+    Given a secure page
+    When create is called with the atSign @Bob.Smith
+    Then the bridge is asked to open the session with @Bob.Smith
 
   Scenario: passkey create forwards the passkey options to the bridge
     Given a secure page

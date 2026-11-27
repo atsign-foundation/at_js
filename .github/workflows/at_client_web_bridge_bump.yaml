@@ -43,10 +43,14 @@ jobs:
           [[ "$tag" =~ ^at_client_web-bridge-[0-9a-f]{12}$ ]] || { echo "unexpected tag: '$tag'" >&2; exit 1; }
           dir="$(mktemp -d)"
           gh release download "$tag" --repo "$BRIDGE_REPO" --pattern at_client_web.js.sha256 --dir "$dir"
+          gh release download "$tag" --repo "$BRIDGE_REPO" --pattern bridge-manifest.json --dir "$dir"
           sha="$(cut -d' ' -f1 "$dir/at_client_web.js.sha256")"
           [[ "$sha" =~ ^[0-9a-f]{64}$ ]] || { echo "unexpected sha256: '$sha'" >&2; exit 1; }
-          # Written only after both regex checks above; the next step trusts this file.
+          # Written only after both regex checks above and the manifest parse below; the next step trusts these files.
           printf '{\n  "tag": "%s",\n  "sha256": "%s"\n}\n' "$tag" "$sha" > "$RUNNER_TEMP/next-bridge.ref"
+          cp "$dir/bridge-manifest.json" "$RUNNER_TEMP/next-bridge-manifest.json"
+          jq -e .schemaVersion "$RUNNER_TEMP/next-bridge-manifest.json" > /dev/null \
+            || { echo "unexpected bridge-manifest.json: '$(head -c 100 "$dir/bridge-manifest.json")'" >&2; exit 1; }
       - name: Open bump pull request
         shell: bash
         env:
@@ -55,6 +59,7 @@ jobs:
           BASE_SHA: ${{ github.sha }}
         run: |
           [[ -f "$RUNNER_TEMP/next-bridge.ref" ]] || exit 0
+          [[ -f "$RUNNER_TEMP/next-bridge-manifest.json" ]] || exit 0
           tag="$(jq -r .tag "$RUNNER_TEMP/next-bridge.ref")"
           branch="bot/bridge-$tag"
           path=packages/at_client_web/bridge.ref
@@ -68,9 +73,17 @@ jobs:
             -f message="chore(at_client_web): pin bridge $tag" \
             -f content="$(base64 -w0 "$RUNNER_TEMP/next-bridge.ref")" \
             -f sha="$file_sha" -f branch="$branch"
+          # A first add has no blob sha yet: an absent file counts as empty and the PUT omits sha.
+          manifest_sha="$(gh api "repos/$REPO/contents/packages/at_client_web/bridge-manifest.json?ref=$branch" --jq .sha 2>/dev/null || true)"
+          manifest_args=()
+          [[ -z "$manifest_sha" ]] || manifest_args=(-f sha="$manifest_sha")
+          gh api -X PUT "repos/$REPO/contents/packages/at_client_web/bridge-manifest.json" --silent \
+            -f message="chore(at_client_web): refresh bridge manifest for $tag" \
+            -f content="$(base64 -w0 "$RUNNER_TEMP/next-bridge-manifest.json")" \
+            -f branch="$branch" "${manifest_args[@]}"
           gh pr create --repo "$REPO" --base trunk --head "$branch" \
             --title "chore(at_client_web): pin bridge $tag" \
-            --body "Pins the bridge release \`$tag\` in \`$path\`. CI is dispatched on this branch and checks the bundle's checksum and build attestation."
+            --body "Pins the bridge release \`$tag\` in \`$path\` and refreshes the committed bridge manifest. CI is dispatched on this branch and checks the bundle's checksum and build attestation."
           trap - EXIT
           # Events made with GITHUB_TOKEN don't trigger workflows, so start CI on the bump branch explicitly.
           gh workflow run ci.yaml --repo "$REPO" --ref "$branch"

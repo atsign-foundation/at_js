@@ -1,15 +1,20 @@
 // Downloads the pinned bridge bundle, checks its sha256 against bridge.ref and
-// its build attestation, and leaves it in .bridge/at_client_web.js.
+// its build attestation, and leaves it in .bridge/at_client_web.js. It also
+// downloads the release's bridge-manifest.json, attests it, and refuses it
+// unless it is byte-equal to the committed copy.
 //
 // The body is fetchBridge({ run, root }) so tests can drive it offline with an
 // injected runner; the CLI below runs only when this file is the entry point.
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, readFileSync, rmSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   BRIDGE_ASSET,
+  BRIDGE_MANIFEST,
   BRIDGE_REPO,
+  assertManifestMatches,
   attestationArgs,
   checkGh,
   parseBridgeRef,
@@ -44,12 +49,15 @@ function requireGhSuccess(args, result) {
 
 /**
  * Checks that gh can attest, downloads the release pinned in `root`/bridge.ref,
- * verifies its sha256 and its attestation, and returns the bundle's path. A
- * failure anywhere deletes the partial file before it is rethrown.
+ * verifies the bundle's sha256 and its attestation, then attests the release's
+ * manifest and requires it to be byte-equal to the committed copy. Returns the
+ * bundle's path. A failure anywhere deletes the partial bundle and the
+ * downloaded manifest before it is rethrown.
  */
 export function fetchBridge({ run, root }) {
   const outDir = resolve(root, '.bridge');
   const file = resolve(outDir, BRIDGE_ASSET);
+  let manifestDir;
   try {
     checkGh(run);
     const ref = parseBridgeRef(readFileSync(resolve(root, 'bridge.ref'), 'utf8'));
@@ -60,10 +68,29 @@ export function fetchBridge({ run, root }) {
     verifyDownload(file, ref.sha256);
     const attest = attestationArgs(file);
     requireGhSuccess(attest, run('gh', attest));
+    manifestDir = mkdtempSync(join(tmpdir(), 'bridge-manifest-'));
+    const manifestDownload = [
+      'release',
+      'download',
+      ref.tag,
+      '-R',
+      BRIDGE_REPO,
+      '-p',
+      BRIDGE_MANIFEST,
+      '-D',
+      manifestDir,
+    ];
+    requireGhSuccess(manifestDownload, run('gh', manifestDownload));
+    const manifest = join(manifestDir, BRIDGE_MANIFEST);
+    const manifestAttest = attestationArgs(manifest);
+    requireGhSuccess(manifestAttest, run('gh', manifestAttest));
+    assertManifestMatches(manifest, resolve(root, BRIDGE_MANIFEST), ref.tag);
     return file;
   } catch (error) {
     rmSync(file, { force: true });
     throw error;
+  } finally {
+    if (manifestDir !== undefined) rmSync(manifestDir, { recursive: true, force: true });
   }
 }
 

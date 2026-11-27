@@ -315,12 +315,34 @@ describe('checkGh', () => {
 
 describe('fetchBridge', () => {
   const bundle = 'bridge bundle\n';
+  const committedManifest = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), '..', 'bridge-manifest.json'),
+  );
 
-  /** A package root pinning `bundle` and a runner whose download writes it. */
-  function root(): string {
+  /** A package root pinning `bundle` and committing `manifest`. */
+  function root(manifest: Buffer = committedManifest): string {
     const dir = tmp();
     writeFileSync(join(dir, 'bridge.ref'), JSON.stringify({ tag, sha256: sha256Hex(Buffer.from(bundle)) }));
+    writeFileSync(join(dir, 'bridge-manifest.json'), manifest);
     return dir;
+  }
+
+  /** A runner whose release downloads write `released` for the manifest and `bundle` otherwise. */
+  function release(calls: string[][], released: Buffer = committedManifest): CommandRunner {
+    return (_command, args) => {
+      calls.push(args);
+      if (args[0] === '--version') return ok('gh version 2.49.0 (2025-01-06)\n');
+      if (args[0] === 'attestation' && args[2] === '--help') return ok(ATTESTATION_HELP);
+      if (args[0] === 'release' && args[1] === 'download') {
+        const outDir = args[args.indexOf('-D') + 1] as string;
+        const asset = args[args.indexOf('-p') + 1] as string;
+        mkdirSync(outDir, { recursive: true });
+        writeFileSync(join(outDir, asset), asset === 'bridge-manifest.json' ? released : bundle);
+        return ok();
+      }
+      if (args[0] === 'attestation' && args[1] === 'verify') return ok('verified');
+      throw new Error(`unexpected gh call: ${args.join(' ')}`);
+    };
   }
 
   async function loadFetchBridge(): Promise<(options: { run: CommandRunner; root: string }) => string> {
@@ -329,35 +351,55 @@ describe('fetchBridge', () => {
     return module.fetchBridge as (options: { run: CommandRunner; root: string }) => string;
   }
 
+  function verifiedFiles(calls: string[][]): string[] {
+    return calls
+      .filter((args) => args[0] === 'attestation' && args[1] === 'verify' && args[2] !== '--help')
+      .map((args) => String(args[2]));
+  }
+
   it('fetch-bridge runs the attestation check with the pinned signer workflow', async () => {
     const fetchBridge = await loadFetchBridge();
     const dir = root();
     const calls: string[][] = [];
-    const run: CommandRunner = (_command, args) => {
-      calls.push(args);
-      if (args[0] === '--version') return ok('gh version 2.49.0 (2025-01-06)\n');
-      if (args[0] === 'attestation' && args[2] === '--help') return ok(ATTESTATION_HELP);
-      if (args[0] === 'release' && args[1] === 'download') {
-        const outDir = args[args.indexOf('-D') + 1] as string;
-        const asset = args[args.indexOf('-p') + 1] as string;
-        mkdirSync(outDir, { recursive: true });
-        writeFileSync(join(outDir, asset), bundle);
-        return ok();
-      }
-      if (args[0] === 'attestation' && args[1] === 'verify') return ok('verified');
-      throw new Error(`unexpected gh call: ${args.join(' ')}`);
-    };
+    const run = release(calls);
 
     const file = fetchBridge({ run, root: dir });
 
     expect(file).toBe(join(dir, '.bridge', 'at_client_web.js'));
     expect(readFileSync(file, 'utf8')).toBe(bundle);
-    const attest = calls.filter((args) => args[0] === 'attestation' && args[1] === 'verify' && args[2] !== '--help');
+    const attest = calls.filter((args) => args[0] === 'attestation' && args[1] === 'verify' && args[2] === file);
     expect(attest).toHaveLength(1);
     const args = attest[0] as string[];
     expect(args).toContain('atsign-foundation/at_client_sdk/.github/workflows/at_client_web_bridge_release.yaml');
     expect(args).toContain('--source-ref');
     expect(args[args.indexOf('--source-ref') + 1]).toBe('refs/heads/trunk');
     expect(args).toContain('--deny-self-hosted-runners');
+  });
+
+  it('fetch-bridge refuses a release manifest that differs from the committed copy', async () => {
+    const fetchBridge = await loadFetchBridge();
+    const dir = root();
+    const calls: string[][] = [];
+    const run = release(calls, Buffer.from('{\n  "schemaVersion": 2\n}\n'));
+
+    const message = messageFrom(() => fetchBridge({ run, root: dir }));
+
+    expect(message).toBe(`bridge-manifest.json from ${tag} differs from the committed copy`);
+    expect(readFileSync(join(dir, 'bridge-manifest.json')).equals(committedManifest)).toBe(true);
+    expect(existsSync(join(dir, '.bridge', 'at_client_web.js'))).toBe(false);
+    expect(verifiedFiles(calls).some((path) => path.endsWith('bridge-manifest.json'))).toBe(true);
+  });
+
+  it('fetch-bridge accepts a release manifest byte-equal to the committed copy and attests it', async () => {
+    const fetchBridge = await loadFetchBridge();
+    const dir = root();
+    const calls: string[][] = [];
+
+    const file = fetchBridge({ run: release(calls), root: dir });
+
+    expect(file).toBe(join(dir, '.bridge', 'at_client_web.js'));
+    const verified = verifiedFiles(calls);
+    expect(verified).toContain(file);
+    expect(verified.some((path) => path.endsWith('bridge-manifest.json'))).toBe(true);
   });
 });

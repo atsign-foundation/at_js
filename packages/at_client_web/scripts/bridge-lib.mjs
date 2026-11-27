@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 
 export const BRIDGE_REPO = 'atsign-foundation/at_client_sdk';
 export const BRIDGE_ASSET = 'at_client_web.js';
+export const BRIDGE_MANIFEST = 'bridge-manifest.json';
 export const BRIDGE_SIGNER_WORKFLOW =
   'atsign-foundation/at_client_sdk/.github/workflows/at_client_web_bridge_release.yaml';
 export const BRIDGE_SOURCE_REF = 'refs/heads/trunk';
@@ -61,6 +62,23 @@ export function resolveBundleSource({ root, env, exists }) {
     throw new Error(`missing ${fetched}; run \`npm run ci:prepare\` (or set AT_CLIENT_WEB_BUNDLE)`);
   }
   return fetched;
+}
+
+/**
+ * Throws unless the downloaded manifest is byte-equal to the committed copy:
+ * a release whose codes or bridge surface changed must land as a reviewable
+ * diff in the committed file, never as a silent change at fetch time.
+ */
+export function assertManifestMatches(downloaded, committed, tag) {
+  let expected;
+  try {
+    expected = readFileSync(committed);
+  } catch {
+    throw new Error(`missing ${committed}; the pinned bridge manifest is committed with the package`);
+  }
+  if (!readFileSync(downloaded).equals(expected)) {
+    throw new Error(`${BRIDGE_MANIFEST} from ${tag} differs from the committed copy`);
+  }
 }
 
 /** The `gh` arguments that check `file`'s build attestation: trunk source, hosted runners, the release workflow. */

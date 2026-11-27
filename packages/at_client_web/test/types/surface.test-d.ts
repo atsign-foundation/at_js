@@ -3,6 +3,9 @@
 import type * as impl from '../../dist/index.js';
 import type { NotifyKey } from '../../dist/index.js';
 import { AtClient } from '../../dist/index.js';
+// The bridge interfaces are internal (not exported from the package entry), so
+// the surface checks below read them from the source that declares them.
+import type { Bridge, BridgeCollection, BridgeSession } from '../../src/loader.js';
 
 declare const client: impl.AtClient;
 
@@ -106,3 +109,29 @@ export const eventValue: Equals<impl.AtEvent['value'], string | undefined> = tru
 export const availableEvent: impl.CollectionEvent<unknown> = { type: 'available', id: 'i', owner: '@a', availableAt: 1 };
 // @ts-expect-error a notification value is a string
 export const binaryValue: impl.AtEvent = { operation: 'update', from: '@a', key: { key: 'k' }, value: new Uint8Array() };
+
+// Each interface must have no member beyond the list the manifest declares;
+// together with the `satisfies` lists in ../surface-lists.ts, which reject a
+// listed name the interface lacks, this pins the surface both ways.
+export const noExtraBridgeMembers: Exclude<keyof Bridge, 'create'> extends never ? true : false = true;
+export const noExtraSessionMembers: Exclude<
+  keyof BridgeSession,
+  | 'approve'
+  | 'close'
+  | 'collection'
+  | 'deny'
+  | 'notify'
+  | 'onStatus'
+  | 'otp'
+  | 'pendingEnrollments'
+  | 'status'
+  | 'subscribe'
+> extends never
+  ? true
+  : false = true;
+export const noExtraCollectionMembers: Exclude<
+  keyof BridgeCollection,
+  'create' | 'get' | 'list' | 'query' | 'remove' | 'share' | 'update' | 'watch'
+> extends never
+  ? true
+  : false = true;

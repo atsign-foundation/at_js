@@ -32,7 +32,7 @@
     "prepack": "npm run build && node scripts/verify-dist.mjs",
     "prepublishOnly": "node scripts/verify-dist.mjs --publish-guard",
     "ci:prepare": "node scripts/fetch-bridge.mjs",
-    "e2e": "playwright test",
+    "e2e": "playwright test --project=bridge",
     "pack:check": "npm pack --dry-run",
     "docs:api": "typedoc"
   },

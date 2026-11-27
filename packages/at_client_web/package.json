@@ -33,6 +33,7 @@
     "prepublishOnly": "node scripts/verify-dist.mjs --publish-guard",
     "ci:prepare": "node scripts/fetch-bridge.mjs",
     "e2e": "playwright test --project=bridge",
+    "e2e:live": "playwright test --project=live",
     "pack:check": "npm pack --dry-run",
     "docs:api": "typedoc"
   },

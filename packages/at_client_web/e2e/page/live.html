@@ -1,0 +1,207 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>at_client_web live e2e</title>
+<input type="file" id="keys" aria-label="atKeys file">
+<script type="module">
+  import { AtClient } from '/dist/index.js';
+
+  // The keys text lives only in this closure. It is never logged, never put on
+  // window or into storage, and is only ever handed to AtClient.create.
+  let keysText;
+  let client;
+  let collection;
+  let statuses = [];
+  let receivedEvents = [];
+  let watchEvents = [];
+
+  const errorCode = (error) => (typeof error?.code === 'string' ? error.code : 'internal');
+
+  const item = (value) =>
+    value === null
+      ? null
+      : {
+          id: value.id,
+          owner: value.owner,
+          type: value.type,
+          data: { ...value.data },
+          sharedWith: [...value.sharedWith],
+        };
+
+  const listing = (value) => ({ ids: value.items.map((entry) => entry.id), unreadable: value.unreadable.length });
+
+  const live = {
+    ready: true,
+    keysLoaded: false,
+
+    create(atSign, namespace) {
+      if (keysText === undefined) throw new Error('the keys file has not been loaded');
+      return AtClient.create({ atSign, namespace, keys: keysText }).then((opened) => {
+        client = opened;
+        statuses = [opened.status];
+        opened.onStatus((status) => statuses.push(status));
+        return { atSign, namespace };
+      });
+    },
+
+    status() {
+      return client.status;
+    },
+
+    statuses() {
+      return [...statuses];
+    },
+
+    /**
+     * Enumerates the raw bridge objects: `client.session` is a TypeScript
+     * private field and a plain property at runtime, and its `collection` is
+     * the bridge's own `BridgeCollection`, not this package's wrapper.
+     */
+    surface(name, type, bridgeSession, bridgeCollection) {
+      return Promise.resolve(client.session.collection(name, { type, eventSource: 'data' })).then(
+        (opened) => {
+          const describe = (object, expected) => ({
+            names: Object.keys(object ?? {}).filter((key) => typeof object[key] === 'function'),
+            types: expected.map((key) => typeof object?.[key]),
+          });
+          return {
+            session: describe(client.session, bridgeSession),
+            collection: describe(opened, bridgeCollection),
+          };
+        },
+      );
+    },
+
+    subscribe(pattern) {
+      receivedEvents = [];
+      const iterator = client.subscribe(pattern)[Symbol.asyncIterator]();
+      void (async () => {
+        try {
+          for (;;) {
+            const next = await iterator.next();
+            if (next.done === true) return;
+            receivedEvents.push({
+              operation: next.value.operation,
+              from: next.value.from,
+              key: { ...next.value.key },
+              value: next.value.value,
+            });
+          }
+        } catch {
+          // A closed or failed subscription simply stops recording.
+        }
+      })();
+      return true;
+    },
+
+    received() {
+      return [...receivedEvents];
+    },
+
+    notify(key, value) {
+      return client.notify(key, value);
+    },
+
+    openCollection(name, options) {
+      return client.collection(name, options).then((opened) => {
+        collection = opened;
+        return true;
+      });
+    },
+
+    startWatch() {
+      watchEvents = [];
+      const iterator = collection.watch()[Symbol.asyncIterator]();
+      void (async () => {
+        try {
+          for (;;) {
+            const next = await iterator.next();
+            if (next.done === true) return;
+            watchEvents.push({ type: next.value.type, id: next.value.id, owner: next.value.owner });
+          }
+        } catch {
+          // A closed or failed watch simply stops recording.
+        }
+      })();
+      return true;
+    },
+
+    watchEvents() {
+      return [...watchEvents];
+    },
+
+    createItem(data, options) {
+      return collection.create(data, options).then(item);
+    },
+
+    getItem(address) {
+      return collection.get(address).then(item);
+    },
+
+    listItems() {
+      return collection.list().then(listing);
+    },
+
+    queryItems(where) {
+      return collection.query(where).then(listing);
+    },
+
+    updateItem(address, data) {
+      return collection.update(address, data).then(item);
+    },
+
+    removeItem(address) {
+      return collection.remove(address, { cascade: true }).then(() => true);
+    },
+
+    /** Removes every item of this run's collection; best effort, reported as a count. */
+    cleanup(name, options) {
+      return Promise.resolve(collection ?? client.collection(name, options))
+        .then(async (opened) => {
+          const value = await opened.list();
+          for (const entry of value.items) {
+            try {
+              await opened.remove({ id: entry.id }, { cascade: true });
+            } catch {
+              // A leftover that cannot be removed stays; this is best effort.
+            }
+          }
+          return value.items.length;
+        })
+        .catch(() => 0);
+    },
+
+    /** The codes of calls made after close, which must all be `closed`. */
+    async afterClose(sharedWith) {
+      const after = {};
+      try {
+        await client.notify({ key: 'after.close', sharedWith }, 'x');
+        after.notify = null;
+      } catch (error) {
+        after.notify = errorCode(error);
+      }
+      try {
+        client.subscribe('\\.closed');
+        after.subscribe = null;
+      } catch (error) {
+        after.subscribe = errorCode(error);
+      }
+      return after;
+    },
+
+    close() {
+      return client.close();
+    },
+  };
+
+  const input = document.getElementById('keys');
+  input.addEventListener('change', async () => {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    keysText = await file.text();
+    // Drop the file handle from the DOM; the text stays only in the closure.
+    input.value = '';
+    live.keysLoaded = true;
+  });
+
+  window.live = live;
+</script>

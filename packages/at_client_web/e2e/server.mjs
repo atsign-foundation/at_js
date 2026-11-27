@@ -28,6 +28,7 @@ const ALLOWED_FIELDS = new Set([...TEXT_FIELDS, ...NUMBER_FIELDS, ...ARRAY_FIELD
 function resolveFile(urlPath) {
   const path = normalize(decodeURIComponent(urlPath));
   const file = path === '/' ? join(root, 'e2e/page/index.html')
+    : path === '/live' ? join(root, 'e2e/page/live.html')
     : path.startsWith('/dist/') ? join(root, path)
     : undefined;
   if (file === undefined || !file.startsWith(root) || !existsSync(file) || !statSync(file).isFile()) {

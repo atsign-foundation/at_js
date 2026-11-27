@@ -112,6 +112,19 @@ describe('package manifest', () => {
   });
 });
 
+describe('playwright config', () => {
+  it('live project records no trace, video or screenshot and uses no HTML reporter', async () => {
+    const config = (await import('../playwright.config.js')).default;
+    const live = (config.projects ?? []).find((project) => project.name === 'live');
+    expect(live, 'the config must define a live project').toBeDefined();
+    expect(live?.use).toMatchObject({ trace: 'off', video: 'off', screenshot: 'off' });
+    const declared = (live as { reporter?: unknown } | undefined)?.reporter ?? config.reporter;
+    const reporters = declared === undefined ? [] : Array.isArray(declared) ? declared : [declared];
+    const names = reporters.map((entry) => (Array.isArray(entry) ? entry[0] : entry));
+    expect(names).not.toContain('html');
+  });
+});
+
 describe('bridge bump workflow', () => {
   const workflow = readFileSync(
     resolve(PKG, '..', '..', '.github', 'workflows', 'at_client_web_bridge_bump.yaml'),

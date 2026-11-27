@@ -1,0 +1,22 @@
+# The local atServer virtual environment for the browser end-to-end probe and
+# suite. A copy of the SDK's tests/at_end2end_test/test/docker-compose.yaml,
+# moved to its own project name and to the 26300-26399 range (root on 26300,
+# atServers from 26301) so it never collides with the SDK suites' 26000 range.
+# The image is pinned by digest; e2e/ve/image.lock records the same digest.
+#
+# Every docker call on the VPS goes through `sg docker -c '...'`.
+name: at_client_web_ve
+services:
+  virtualenv:
+    image: atsigncompany/virtualenv@sha256:28e08027451614ae639fc9d9289f576207b2b358c0778d783b75501b8918b1f9
+    # The published image's default CMD runs supervisord directly and ignores
+    # VIRTUALENV_BASE_PORT. Run the base-port entrypoint explicitly so the
+    # port shift happens (it execs supervisord).
+    entrypoint: ["/atsign/entrypoint.sh"]
+    ports:
+      # The whole base..base+99 range (root=base, atServers=base+1.., redis=base+99).
+      - "127.0.0.1:${VIRTUALENV_BASE_PORT:-26300}-${VE_TOP_PORT:-26399}:${VIRTUALENV_BASE_PORT:-26300}-${VE_TOP_PORT:-26399}"
+    extra_hosts:
+      - "vip.ve.atsign.zone:127.0.0.1"
+    environment:
+      - VIRTUALENV_BASE_PORT=${VIRTUALENV_BASE_PORT:-26300}

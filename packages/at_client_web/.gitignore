@@ -6,3 +6,4 @@ playwright-report/
 docs/api/
 .bridge/
 e2e/runs/
+e2e/ve/probe.json

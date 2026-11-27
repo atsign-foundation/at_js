@@ -126,8 +126,11 @@ export interface AtEvent {
    * key cut at that bound is marked `truncated` and its text is not parsed.
    */
   key: AtKey;
-  /** The new value; absent when the notification carries none. */
-  value?: string | Uint8Array;
+  /**
+   * The new value; absent when the notification carries none. It is a string:
+   * these are the values the pinned bridge emits.
+   */
+  value?: string;
 }
 
 /** An enrollment request awaiting `approve` or `deny`. */

@@ -94,3 +94,15 @@ void AtClient.onboard;
 void AtClient.enroll;
 // @ts-expect-error no prf probe
 void AtClient.prfSupported;
+
+type Equals<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
+
+export const eventKinds: Equals<
+  impl.CollectionEvent<unknown>['type'],
+  'updated' | 'deleted' | 'readReceipt' | 'subItemUpdated' | 'subItemDeleted' | 'unknown'
+> = true;
+export const eventValue: Equals<impl.AtEvent['value'], string | undefined> = true;
+// @ts-expect-error available is not a kind the pinned bridge emits
+export const availableEvent: impl.CollectionEvent<unknown> = { type: 'available', id: 'i', owner: '@a', availableAt: 1 };
+// @ts-expect-error a notification value is a string
+export const binaryValue: impl.AtEvent = { operation: 'update', from: '@a', key: { key: 'k' }, value: new Uint8Array() };

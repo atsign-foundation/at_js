@@ -1,3 +1,7 @@
+# Threats: forgery is the surface here. A kind the package does not declare can
+# never surface as a declared kind: watch maps every other type to unknown and
+# keeps its fields. DoS, replay and race do not apply to mapping an event kind.
+
 Feature: A collection offers eight operations over typed items
 
   client.collection(name, { type, eventSource }) returns a Collection with
@@ -80,3 +84,13 @@ Feature: A collection offers eight operations over typed items
     Given an open watch
     When a subItemUpdated event arrives whose ancestor has owner null
     Then next() yields the event with that ancestor's owner still null
+
+  Scenario: a watch event of a kind the package does not know arrives as unknown with its fields
+    Given an open watch
+    When an available event arrives
+    Then next() yields it with type unknown and its fields kept
+
+  Scenario: a watch event of a known kind arrives unchanged
+    Given an open watch
+    When an event of each known kind arrives
+    Then next() yields each one unchanged and a sub-item ancestry keeps its identity

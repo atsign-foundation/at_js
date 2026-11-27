@@ -65,12 +65,14 @@ export interface Ancestor {
   owner: string | null;
 }
 
-/** One event `watch` delivers; every kind names the item's `id` and `owner`. */
+/**
+ * One event `watch` delivers; every kind names the item's `id` and `owner`.
+ * These are the kinds the pinned bridge emits; any other kind arrives as
+ * `unknown` with its fields kept.
+ */
 export type CollectionEvent<T> =
   | { type: 'updated'; id: string; owner: string }
   | { type: 'deleted'; id: string; owner: string; wasExpired: boolean }
-  | { type: 'available'; id: string; owner: string; availableAt: number }
-  | { type: 'expiringSoon'; id: string; owner: string; expiresAt: number; leadTimeMs: number }
   | { type: 'readReceipt'; id: string; owner: string; from: string; readAt: number }
   | { type: 'subItemUpdated'; id: string; owner: string; ancestry: Ancestor[] }
   | { type: 'subItemDeleted'; id: string; owner: string; ancestry: Ancestor[] }
@@ -112,6 +114,14 @@ const listing = <T>(raw: BridgeListing): Listing<T> => ({
   items: raw.items.map((i) => item<T>(i)),
   unreadable: raw.unreadable as UnreadableItem[],
 });
+
+/** The event kinds the pinned bridge emits; any other kind is delivered as `unknown`. */
+const knownKinds = new Set(['updated', 'deleted', 'readReceipt', 'subItemUpdated', 'subItemDeleted', 'unknown']);
+
+const collectionEvent = <T>(event: BridgeEvent): CollectionEvent<T> =>
+  knownKinds.has(event.type)
+    ? (event as unknown as CollectionEvent<T>)
+    : ({ ...event, type: 'unknown' } as CollectionEvent<T>);
 
 /** What a collection needs of the client that opened it. */
 export interface CollectionHost {
@@ -157,7 +167,7 @@ export function openCollection<T>(collection: BridgeCollection, host: Collection
       });
       try {
         const started = collection.watch(
-          (event: BridgeEvent) => queue.push(event as unknown as CollectionEvent<T>),
+          (event: BridgeEvent) => queue.push(collectionEvent<T>(event)),
           (error) => queue.fail(toAtError(error)),
         );
         if (typeof started !== 'function') throw started;

@@ -34,6 +34,7 @@
     "ci:prepare": "node scripts/fetch-bridge.mjs",
     "e2e": "playwright test --project=bridge",
     "e2e:live": "playwright test --project=live",
+    "e2e:ve": "AT_VE=1 playwright test --project=ve",
     "pack:check": "npm pack --dry-run",
     "docs:api": "typedoc"
   },

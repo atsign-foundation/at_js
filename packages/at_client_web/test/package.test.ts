@@ -123,6 +123,34 @@ describe('playwright config', () => {
     const names = reporters.map((entry) => (Array.isArray(entry) ? entry[0] : entry));
     expect(names).not.toContain('html');
   });
+
+  it('defines a ve project that records nothing and carries the full host-resolver rule', async () => {
+    const savedVe = process.env.AT_VE;
+    delete process.env.AT_VE;
+    try {
+      const config = (await import('../playwright.config.js')).default;
+      const ve = (config.projects ?? []).find((project) => project.name === 've');
+      expect(ve, 'the config must define a ve project').toBeDefined();
+      expect(ve?.use).toMatchObject({ trace: 'off', video: 'off', screenshot: 'off' });
+      const args =
+        (ve?.use as { launchOptions?: { args?: string[] } } | undefined)?.launchOptions?.args ?? [];
+      const resolver = args.filter((arg) => arg.startsWith('--host-resolver-rules='));
+      expect(resolver).toHaveLength(1);
+      expect(resolver[0]).toContain('MAP insecure.test 127.0.0.1');
+      expect(resolver[0]).toContain('MAP vip.ve.atsign.zone 127.0.0.1');
+    } finally {
+      if (savedVe !== undefined) process.env.AT_VE = savedVe;
+    }
+  });
+
+  it('runs only the bridge project for e2e and selects the ve project for e2e:ve', () => {
+    const manifest = JSON.parse(readFileSync(join(PKG, 'package.json'), 'utf8')) as {
+      scripts: Record<string, string>;
+    };
+    expect(manifest.scripts.e2e).toBe('playwright test --project=bridge');
+    expect(manifest.scripts['e2e:ve']).toContain('--project=ve');
+    expect(manifest.scripts['e2e:ve']).toContain('AT_VE=1');
+  });
 });
 
 describe('bridge bump workflow', () => {

@@ -27,15 +27,21 @@
           sharedWith: [...value.sharedWith],
         };
 
-  const listing = (value) => ({ ids: value.items.map((entry) => entry.id), unreadable: value.unreadable.length });
+  const listing = (value) => ({
+    ids: value.items.map((entry) => entry.id),
+    items: value.items.map((entry) => ({ id: entry.id, owner: entry.owner })),
+    unreadable: value.unreadable.length,
+  });
 
   const live = {
     ready: true,
     keysLoaded: false,
 
-    create(atSign, namespace) {
+    create(atSign, namespace, rootDomain) {
       if (keysText === undefined) throw new Error('the keys file has not been loaded');
-      return AtClient.create({ atSign, namespace, keys: keysText }).then((opened) => {
+      const options = { atSign, namespace, keys: keysText };
+      if (typeof rootDomain === 'string' && rootDomain !== '') options.rootDomain = rootDomain;
+      return AtClient.create(options).then((opened) => {
         client = opened;
         statuses = [opened.status];
         opened.onStatus((status) => statuses.push(status));
@@ -97,8 +103,9 @@
       return [...receivedEvents];
     },
 
-    notify(key, value) {
-      return client.notify(key, value);
+    /** `extra` is merged into the key, so a key can omit `sharedWith` or carry a foreign `sharedBy`. */
+    notify(key, value, extra) {
+      return client.notify({ ...key, ...(extra ?? {}) }, value);
     },
 
     openCollection(name, options) {
@@ -190,6 +197,19 @@
 
     close() {
       return client.close();
+    },
+
+    /** Calls `live[name](...args)`: `{ ok, value }`, or `{ ok: false, code, message }`. Never carries key text. */
+    async tryCall(name, ...args) {
+      try {
+        return { ok: true, value: await live[name](...args) };
+      } catch (error) {
+        return {
+          ok: false,
+          code: typeof error?.code === 'string' ? error.code : 'unknown',
+          message: String(error?.message ?? ''),
+        };
+      }
     },
   };
 

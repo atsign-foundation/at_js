@@ -41,3 +41,23 @@ AT_VE_CERTS_DIR=<certs dir> AT_VE_KEYS_DIR=$TMPDIR/ve-keys node e2e/ve/probe.mjs
    pass-through (`dropFirst` closes the first n connections);
 6. `AtClient.create` against the VE root reaches `connected`;
 7. the four demo keys files parse as JSON objects.
+
+## The keyless suite
+
+`ve.spec.ts` (V1-V8, `npm run e2e:ve`, project `ve`) runs against the same
+VE. `global-setup.ts` starts it and `global-teardown.ts` takes it down; both do
+nothing unless `AT_VE=1`. The suite decrypts the legacy self-encrypted fields of
+the demo keys before the page sees them, because the bridge takes the plain
+document rather than one it has to self-decrypt.
+
+```bash
+npm run build
+AT_VE_CERTS_DIR=<certs dir> npm run e2e:ve   # VE_RUNS=5 by default
+```
+
+The atServer asks the browser for a client certificate during its TLS
+handshake, and Chromium cancels a WebSocket upgrade to such an origin unless a
+top-level navigation to the origin already cached the decision. The suite
+therefore opens `https://vip.ve.atsign.zone:<port>/` on a second page of the
+same context before the first `create` (`prenav.ts`). Set `VE_PRENAVIGATE=0`
+to switch this off, for example to try a bridge-side pre-flight instead.

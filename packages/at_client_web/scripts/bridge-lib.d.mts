@@ -18,3 +18,13 @@ export function verifiedBundleSource(options: {
   exists: (path: string) => boolean;
 }): string;
 export function stripSourceMapComment(text: string): string;
+export function publishGuard(options: {
+  root: string;
+  env: Record<string, string | undefined>;
+  exists: (path: string) => boolean;
+}): void;
+export function verifyDist(options: {
+  root: string;
+  env: Record<string, string | undefined>;
+  exists: (path: string) => boolean;
+}): void;

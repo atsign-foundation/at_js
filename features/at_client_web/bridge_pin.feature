@@ -44,3 +44,58 @@ Feature: The build uses only the bridge release pinned in bridge.ref
     Given the fetched bundle
     When the attestation check is built
     Then it names the release workflow, the trunk source ref and denies self-hosted runners
+
+  # A publish re-derives dist/dart/at_client.js from the sha-checked bridge, so
+  # forgery cannot ship an unverified bundle and a stale dist from an older pin
+  # fails the byte comparison. Race and DoS are not applicable: the checks run
+  # once, offline, before anything is packed.
+
+  Scenario: verify-dist refuses to publish when AT_CLIENT_WEB_BUNDLE is set
+    Given AT_CLIENT_WEB_BUNDLE names a local bundle
+    When the publish guard runs
+    Then it refuses and names AT_CLIENT_WEB_BUNDLE
+
+  Scenario: verify-dist refuses a dist missing index.js, index.d.ts or dart/at_client.js
+    Given a dist without one of its three required files
+    When verify-dist runs
+    Then it refuses and names the missing file
+
+  Scenario: the publish guard names ci:prepare when .bridge is missing or its sha differs from bridge.ref
+    Given no fetched bundle, or one whose sha256 differs from bridge.ref
+    When the publish guard runs
+    Then it refuses with a message naming npm run ci:prepare
+
+  Scenario: the publish guard passes on a tree with no dist
+    Given a verified fetched bundle and no dist directory
+    When the publish guard runs
+    Then it passes without reading dist
+
+  Scenario: verify-dist refuses a dist bundle that is not the stripped verified bridge
+    Given a dist bundle that still carries its sourceMappingURL comment
+    When verify-dist runs
+    Then it refuses; the stripped bridge passes
+
+  Scenario: package.json runs build and verify-dist on prepack and the publish guard on prepublishOnly
+    Given the package manifest
+    When its scripts are read
+    Then prepack builds and verifies and prepublishOnly runs only the publish guard
+
+  Scenario: npm publish --dry-run on a clean copy runs the guard, then builds and verifies dist
+    Given a clean copy of the package with a fixture bridge pin
+    When npm publish --dry-run runs offline
+    Then the guard, the build and verify-dist each succeed in that order and dist exists
+
+  Scenario: npm publish --dry-run refuses in prepublishOnly, before any build, when AT_CLIENT_WEB_BUNDLE is set
+    Given a clean copy of the package and AT_CLIENT_WEB_BUNDLE set
+    When npm publish --dry-run runs offline
+    Then it exits non-zero naming the override and no dist is built
+
+  Scenario: the package declares no engines
+    Given the package manifest
+    When it is read
+    Then it has no engines field
+
+  Scenario: the package exports its package.json
+    Given the package manifest
+    When a consumer resolves @atsign/at_client_web/package.json
+    Then the export is declared and the consumer resolves it

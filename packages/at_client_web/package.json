@@ -16,7 +16,8 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "files": [
     "dist",
@@ -28,6 +29,8 @@
     "lint": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "build": "rm -rf dist && tsc -p tsconfig.build.json && node scripts/copy-bundle.mjs",
+    "prepack": "npm run build && node scripts/verify-dist.mjs",
+    "prepublishOnly": "node scripts/verify-dist.mjs --publish-guard",
     "ci:prepare": "node scripts/fetch-bridge.mjs",
     "e2e": "playwright test",
     "pack:check": "npm pack --dry-run",
@@ -44,8 +47,5 @@
   "publishConfig": {
     "access": "public",
     "tag": "alpha"
-  },
-  "engines": {
-    "node": ">=24"
   }
 }

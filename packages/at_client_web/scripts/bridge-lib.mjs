@@ -107,3 +107,66 @@ export function stripSourceMapComment(text) {
   const body = text.slice(0, match.index);
   return body === '' ? '' : `${body}\n`;
 }
+
+function messageOf(error) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * The text of the fetched bridge, after checking its sha256 against bridge.ref.
+ * Never deletes the file: unlike a download, a build must not destroy its input.
+ */
+function verifiedBridgeText({ root, exists }) {
+  let ref;
+  try {
+    ref = parseBridgeRef(readFileSync(resolve(root, 'bridge.ref'), 'utf8'));
+  } catch (error) {
+    throw new Error(`${messageOf(error)}; run \`npm run ci:prepare\``);
+  }
+  const fetched = resolve(root, '.bridge', BRIDGE_ASSET);
+  if (!exists(fetched)) {
+    throw new Error(`missing ${fetched}; run \`npm run ci:prepare\``);
+  }
+  const bytes = readFileSync(fetched);
+  const actual = sha256Hex(bytes);
+  if (actual !== ref.sha256) {
+    throw new Error(`checksum mismatch for ${BRIDGE_ASSET}: expected ${ref.sha256}, got ${actual}; run \`npm run ci:prepare\``);
+  }
+  return bytes.toString('utf8');
+}
+
+const DIST_FILES = ['dist/index.js', 'dist/index.d.ts', 'dist/dart/at_client.js'];
+
+/**
+ * The check `prepublishOnly` runs, before any build: refuse the local-bundle
+ * override, and require bridge.ref to parse and the fetched bundle to match its
+ * sha256. Looks only at bridge.ref and .bridge/, never at dist/.
+ */
+export function publishGuard({ root, env, exists }) {
+  const override = env.AT_CLIENT_WEB_BUNDLE;
+  if (override) {
+    throw new Error(`refusing to publish: AT_CLIENT_WEB_BUNDLE is set (${override}); publish from the bridge pinned in bridge.ref`);
+  }
+  verifiedBridgeText({ root, exists });
+}
+
+/**
+ * The check `prepack` runs after the build: require dist's three entry files and
+ * a dist/dart/at_client.js byte-equal to the stripped, sha-verified bridge.
+ */
+export function verifyDist({ root, env, exists }) {
+  const override = env.AT_CLIENT_WEB_BUNDLE;
+  if (override) {
+    throw new Error(`refusing to verify a dist built from AT_CLIENT_WEB_BUNDLE (${override}); build from the bridge pinned in bridge.ref`);
+  }
+  for (const rel of DIST_FILES) {
+    if (!exists(resolve(root, rel))) {
+      throw new Error(`missing ${rel}; run \`npm run build\``);
+    }
+  }
+  const expected = stripSourceMapComment(verifiedBridgeText({ root, exists }));
+  const actual = readFileSync(resolve(root, 'dist', 'dart', 'at_client.js'), 'utf8');
+  if (actual !== expected) {
+    throw new Error('dist/dart/at_client.js is not the stripped verified bridge; rebuild with `npm run build`');
+  }
+}

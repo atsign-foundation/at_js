@@ -11,6 +11,7 @@ try {
   const source = verifiedBundleSource({ root, env: process.env, exists: existsSync });
   mkdirSync(dirname(target), { recursive: true });
   writeFileSync(target, stripSourceMapComment(readFileSync(source, 'utf8')));
+  console.log('dist built');
 } catch (error) {
   console.error(error instanceof Error ? error.message : error);
   process.exit(1);

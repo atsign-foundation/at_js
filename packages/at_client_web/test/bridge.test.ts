@@ -376,6 +376,38 @@ describe('fetchBridge', () => {
     expect(args).toContain('--deny-self-hosted-runners');
   });
 
+  it('fetch-bridge keeps an existing bundle when gh cannot attest', async () => {
+    const fetchBridge = await loadFetchBridge();
+    const dir = root();
+    mkdirSync(join(dir, '.bridge'), { recursive: true });
+    writeFileSync(join(dir, '.bridge', 'at_client_web.js'), 'existing bundle\n');
+    const calls: string[][] = [];
+    const run: CommandRunner = (_command, args) => {
+      calls.push(args);
+      if (args[0] === '--version') return ok('gh version 2.46.0 (2024-05-01)\n');
+      return { status: 1, stdout: '', stderr: 'unknown command "attestation" for "gh"\n' };
+    };
+
+    expect(() => fetchBridge({ run, root: dir })).toThrow();
+
+    expect(readFileSync(join(dir, '.bridge', 'at_client_web.js'), 'utf8')).toBe('existing bundle\n');
+    expect(calls.some((args) => args[0] === 'release')).toBe(false);
+  });
+
+  it('fetch-bridge keeps an existing bundle when the pin is malformed', async () => {
+    const fetchBridge = await loadFetchBridge();
+    const dir = root();
+    writeFileSync(join(dir, 'bridge.ref'), 'not json');
+    mkdirSync(join(dir, '.bridge'), { recursive: true });
+    writeFileSync(join(dir, '.bridge', 'at_client_web.js'), 'existing bundle\n');
+    const calls: string[][] = [];
+
+    expect(() => fetchBridge({ run: release(calls), root: dir })).toThrow();
+
+    expect(readFileSync(join(dir, '.bridge', 'at_client_web.js'), 'utf8')).toBe('existing bundle\n');
+    expect(calls.some((args) => args[0] === 'release')).toBe(false);
+  });
+
   it('fetch-bridge refuses a release manifest that differs from the committed copy', async () => {
     const fetchBridge = await loadFetchBridge();
     const dir = root();

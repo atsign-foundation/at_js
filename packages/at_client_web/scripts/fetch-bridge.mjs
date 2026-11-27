@@ -51,16 +51,18 @@ function requireGhSuccess(args, result) {
  * Checks that gh can attest, downloads the release pinned in `root`/bridge.ref,
  * verifies the bundle's sha256 and its attestation, then attests the release's
  * manifest and requires it to be byte-equal to the committed copy. Returns the
- * bundle's path. A failure anywhere deletes the partial bundle and the
- * downloaded manifest before it is rethrown.
+ * bundle's path. A failure from the download onward deletes the partial bundle
+ * and the downloaded manifest before it is rethrown; a gh or pin failure
+ * happens before any download and leaves an existing bundle alone.
  */
 export function fetchBridge({ run, root }) {
   const outDir = resolve(root, '.bridge');
   const file = resolve(outDir, BRIDGE_ASSET);
+  // Both checks may throw straight out: they never touch the bundle.
+  checkGh(run);
+  const ref = parseBridgeRef(readFileSync(resolve(root, 'bridge.ref'), 'utf8'));
   let manifestDir;
   try {
-    checkGh(run);
-    const ref = parseBridgeRef(readFileSync(resolve(root, 'bridge.ref'), 'utf8'));
     rmSync(file, { force: true });
     mkdirSync(outDir, { recursive: true });
     const download = ['release', 'download', ref.tag, '-R', BRIDGE_REPO, '-p', BRIDGE_ASSET, '-D', outDir];

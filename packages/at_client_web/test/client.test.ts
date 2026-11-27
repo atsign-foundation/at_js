@@ -610,6 +610,61 @@ describe('subscribe', () => {
     expect(fake.session.close).toHaveBeenCalledTimes(1);
   });
 
+  it('a failed close rejects again on every retry and closes the bridge session once', async () => {
+    const client = await AtClient.create(opts);
+    fake.session.close.mockRejectedValueOnce({ code: 'internal', message: 'internal error' });
+    expect((await rejection(client.close())).code).toBe('internal');
+    expect((await rejection(client.close())).code).toBe('internal');
+    expect(fake.session.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('concurrent close calls share one bridge close', async () => {
+    const client = await AtClient.create(opts);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    fake.session.close.mockImplementationOnce(async () => {
+      await gate;
+      return null;
+    });
+    const first = client.close();
+    const second = client.close();
+    expect(second).toBe(first);
+    expect(fake.session.close).toHaveBeenCalledTimes(1);
+    release();
+    await Promise.all([first, second]);
+  });
+
+  it('close returns the same promise to every call and ends iterators once', async () => {
+    const client = await AtClient.create(opts);
+    const ends = [vi.fn(), vi.fn()];
+    fake.session.subscribe
+      .mockImplementationOnce(() => ends[0] as never)
+      .mockImplementationOnce(() => ends[1] as never);
+    const a = client.subscribe()[Symbol.asyncIterator]();
+    const b = client.subscribe('x')[Symbol.asyncIterator]();
+    const p = client.close();
+    expect(client.close()).toBe(p);
+    await p;
+    expect(ends[0]).toHaveBeenCalledTimes(1);
+    expect(ends[1]).toHaveBeenCalledTimes(1);
+    expect(await a.next()).toEqual({ done: true, value: undefined });
+    expect(await b.next()).toEqual({ done: true, value: undefined });
+    await client.close();
+    expect(ends[0]).toHaveBeenCalledTimes(1);
+    expect(ends[1]).toHaveBeenCalledTimes(1);
+    expect(fake.session.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls after a failed close reject closed', async () => {
+    const client = await AtClient.create(opts);
+    fake.session.close.mockRejectedValueOnce({ code: 'internal', message: 'internal error' });
+    expect((await rejection(client.close())).code).toBe('internal');
+    expect((await rejection(client.notify({ key: 'k', sharedWith: '@bob' }, 'v'))).code).toBe('closed');
+    expect(fake.session.notify).not.toHaveBeenCalled();
+  });
+
   it('subscribe after close throws closed without touching the bridge', async () => {
     const client = await AtClient.create(opts);
     await client.close();

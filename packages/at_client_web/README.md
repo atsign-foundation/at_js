@@ -59,6 +59,12 @@ Send another atSign a notification with `client.notify({ key: 'greeting', shared
 
 **Notifications sent while the tab is closed or reloading are never delivered.** A session only receives what is sent while it is connected.
 
+## Closing
+
+| Call | Resolves |
+|---|---|
+| `close()` | nothing. Ends every open iterator and closes the bridge session once; every call — concurrent or later, success or failure — returns the same promise, so a close that failed keeps rejecting instead of reporting success |
+
 ## Collections
 
 ```ts

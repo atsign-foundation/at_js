@@ -7,7 +7,10 @@
 # Inbound, subscribe takes a key's owner only from the bridge's verified
 # sender: a notification with no verified sender is dropped. Forgery: the owner
 # comes only from `from`. DoS: display-bounded key text is never parsed.
-# Replay and race: no new surface.
+#
+# Closing: race is concurrent closes sharing one bridge close; replay is a
+# failed close staying failed, never replayed into a reported success. The
+# same promise goes back to every caller, concurrent or later.
 
 Feature: notify sends to another atSign and subscribe delivers only genuine events
 
@@ -93,6 +96,30 @@ Feature: notify sends to another atSign and subscribe delivers only genuine even
     Then both iterators finish done
     And each subscription is unsubscribed
     And the bridge session is closed once
+
+  Scenario: a failed close rejects again on every retry and closes the bridge session once
+    Given an open client whose bridge close rejects with { code: 'internal', message }
+    When close is called twice
+    Then each call rejects with AtError code internal
+    And the bridge session is closed once
+
+  Scenario: concurrent close calls share one bridge close
+    Given an open client whose bridge close has not finished
+    When close is called twice before the first finishes
+    Then both calls return the same promise
+    And the bridge session is closed once
+
+  Scenario: close returns the same promise to every call and ends iterators once
+    Given two open subscriptions
+    When close is called twice
+    Then both calls return the same promise object
+    And each subscription is ended once
+
+  Scenario: calls after a failed close reject closed
+    Given a client whose close failed
+    When notify is called
+    Then it rejects with AtError code closed
+    And the bridge is not asked to notify
 
   Scenario: subscribe after close throws closed without touching the bridge
     Given a closed client

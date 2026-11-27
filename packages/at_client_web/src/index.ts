@@ -240,6 +240,7 @@ export type ConnectionStatus =
 export class AtClient {
   private readonly streams = new Set<{ end(): void }>();
   private closed = false;
+  private closing?: Promise<void>;
 
   private constructor(
     private readonly session: BridgeSession,
@@ -387,12 +388,19 @@ export class AtClient {
     await this.bridgedOpen(() => this.session.deny(id));
   }
 
-  /** Closes the session and ends every open `subscribe` iterator; closing twice is a no-op. */
-  async close(): Promise<void> {
-    if (this.closed) return;
-    this.closed = true;
-    for (const stream of [...this.streams]) stream.end();
-    await bridged(() => this.session.close());
+  /**
+   * Closes the session and ends every open `subscribe` iterator once; returns
+   * the same promise to every call, so a failed close keeps rejecting.
+   */
+  close(): Promise<void> {
+    if (this.closing === undefined) {
+      this.closed = true;
+      for (const stream of [...this.streams]) stream.end();
+      this.closing = bridged(async () => {
+        await this.session.close();
+      });
+    }
+    return this.closing;
   }
 
   private event(notification: BridgeNotification): AtEvent | undefined {

@@ -88,6 +88,12 @@ export interface AtKey {
   cached?: boolean;
   /** The key has no namespace; set on the keys a `subscribe` event carries, and honored by `notify`. */
   noNamespace?: boolean;
+  /**
+   * Only on a `subscribe` event's key: the bridge bounded the key text at its
+   * 128-unit display limit and cut it short. The value is the bounded text
+   * itself, its owner is the verified sender, and none of it was parsed.
+   */
+  truncated?: true;
 }
 
 /**
@@ -110,9 +116,15 @@ export interface NotifyKey {
 export interface AtEvent {
   /** What happened to the key. */
   operation: 'update' | 'delete';
-  /** The atSign that sent the notification, in `@name` form; it is the key's owner. */
+  /**
+   * The verified sender, in `@name` form; the authority for the key's owner.
+   * It is set from the authenticated sender, not from the key text.
+   */
   from: string;
-  /** The key that changed. */
+  /**
+   * The key that changed. The bridge bounds its text to 128 UTF-16 units; a
+   * key cut at that bound is marked `truncated` and its text is not parsed.
+   */
   key: AtKey;
   /** The new value; absent when the notification carries none. */
   value?: string | Uint8Array;
@@ -324,7 +336,8 @@ export class AtClient {
         regex ?? `\\.${this.namespace.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}@`,
         (notification) => {
           try {
-            queue.push(this.event(notification));
+            const event = this.event(notification);
+            if (event !== undefined) queue.push(event);
           } catch (error) {
             queue.fail(toAtError(error));
           }
@@ -382,11 +395,18 @@ export class AtClient {
     await bridged(() => this.session.close());
   }
 
-  private event(notification: BridgeNotification): AtEvent {
+  private event(notification: BridgeNotification): AtEvent | undefined {
+    const from = notification.from;
+    if (typeof from !== 'string' || from.length <= 1 || !from.startsWith('@')) return undefined;
+    const text = notification.key;
+    const key: AtKey =
+      text.length >= 127 && text.endsWith('...')
+        ? { key: text, sharedBy: from, truncated: true }
+        : { ...parseKey(text, this.namespace), sharedBy: from };
     const event: AtEvent = {
       operation: notification.operation,
-      from: notification.from,
-      key: parseKey(notification.key, this.namespace),
+      from,
+      key,
     };
     if (notification.value !== null && notification.value !== undefined) {
       event.value = notification.value;

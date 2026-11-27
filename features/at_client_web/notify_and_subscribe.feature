@@ -3,6 +3,11 @@
 # and again by the bridge. There is no replay or race surface: composing the
 # atKey text is a pure function. DoS is bounded by the bridge's 248-character
 # key validator.
+#
+# Inbound, subscribe takes a key's owner only from the bridge's verified
+# sender: a notification with no verified sender is dropped. Forgery: the owner
+# comes only from `from`. DoS: display-bounded key text is never parsed.
+# Replay and race: no new surface.
 
 Feature: notify sends to another atSign and subscribe delivers only genuine events
 
@@ -13,8 +18,9 @@ Feature: notify sends to another atSign and subscribe delivers only genuine even
   the session atSign, and a malformed field is refused locally with
   invalid_argument naming NotifyKey.<field>. subscribe registers when called
   and hands the app
-  events as an async iterator. A notification this session sent, or one whose
-  key owner is not its sender, is never delivered. The iterator buffers up to
+  events as an async iterator. Each event's key owner is the verified sender; a
+  notification with no verified sender is skipped, and a key the bridge bounded
+  to 128 units is marked truncated and not parsed. The iterator buffers up to
   4096 events; past that it ends and its next() rejects overflow.
 
   Scenario: notify sends the key as atKey text with the session namespace and atSign
@@ -118,6 +124,37 @@ Feature: notify sends to another atSign and subscribe delivers only genuine even
     Given an open subscription
     When a notification arrives with a malformed key followed by a valid notification
     Then next() rejects with AtError code bad_key and the next next() yields the valid event
+
+  Scenario: subscribe takes the key owner from the verified sender
+    Given an open subscription
+    When a notification arrives from @bobsmith with a key whose text names another owner
+    Then the event's key owner is @bobsmith and its from is @bobsmith
+
+  Scenario: subscribe skips a notification with no verified sender
+    Given an open subscription
+    When notifications arrive with no @-prefixed from and then a well-formed one
+    Then only the well-formed notification is yielded
+
+  Scenario: subscribe marks a display-bounded key as truncated and does not parse it
+    Given an open subscription
+    When a notification arrives with key text cut at the bridge's 128-unit display bound
+    Then the event's key is that bounded text, owned by the verified sender, with truncated true
+    And none of the text is parsed
+
+  Scenario: subscribe parses an uncut key of exactly 128 units
+    Given an open subscription
+    When a notification arrives with a 128-unit key that does not end in three dots
+    Then the key is parsed and carries no truncated field
+
+  Scenario: subscribe marks a key cut before a surrogate pair as truncated
+    Given an open subscription
+    When a notification arrives with 127 units of key text ending in three dots
+    Then the event's key is that bounded text, owned by the verified sender, with truncated true
+
+  Scenario: an ordinary subscribe event carries no truncated field
+    Given an open subscription
+    When an ordinary notification arrives
+    Then its key carries no truncated field
 
   Scenario: canonicalizes atSigns and namespaces to lowercase
     Given a wire key string

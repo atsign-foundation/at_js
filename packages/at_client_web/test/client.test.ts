@@ -488,7 +488,7 @@ describe('subscribe', () => {
     expect(second.value).toEqual({
       operation: 'delete',
       from: '@alice',
-      key: { key: 'note', namespace: 'tally', sharedBy: '@bob' },
+      key: { key: 'note', namespace: 'tally', sharedBy: '@alice' },
     });
     expect('value' in second.value).toBe(false);
   });
@@ -498,6 +498,75 @@ describe('subscribe', () => {
     const events = client.subscribe()[Symbol.asyncIterator]();
     fake.listeners[0]!(payload({ from: '@bob', key: 'note.tally@bob' }));
     expect((await events.next()).value.from).toBe('@bob');
+  });
+
+  it('subscribe takes the key owner from the verified sender', async () => {
+    const client = await AtClient.create(opts);
+    const events = client.subscribe()[Symbol.asyncIterator]();
+    fake.listeners[0]!(payload({ from: '@bobsmith', key: '@alice:k.tally@bob.smith' }));
+    const event = (await events.next()).value;
+    expect(event.key.sharedBy).toBe('@bobsmith');
+    expect(event.from).toBe('@bobsmith');
+  });
+
+  it('subscribe skips a notification with no verified sender', async () => {
+    const client = await AtClient.create(opts);
+    const events = client.subscribe()[Symbol.asyncIterator]();
+    const withoutFrom = {
+      id: 'n0',
+      key: 'k.tally@bob',
+      value: null,
+      epochMillis: 1,
+      operation: 'update',
+    };
+    fake.listeners[0]!(withoutFrom);
+    fake.listeners[0]!(payload({ from: '' }));
+    fake.listeners[0]!(payload({ from: 'bob' }));
+    fake.listeners[0]!(payload({ from: 5 }));
+    fake.listeners[0]!(payload({ from: '@bob', key: 'good.tally@bob' }));
+    expect((await events.next()).value).toMatchObject({
+      from: '@bob',
+      key: { key: 'good', namespace: 'tally', sharedBy: '@bob' },
+    });
+  });
+
+  it('subscribe marks a display-bounded key as truncated and does not parse it', async () => {
+    const client = await AtClient.create(opts);
+    const events = client.subscribe()[Symbol.asyncIterator]();
+    const text = `${'k'.repeat(125)}...`;
+    expect(text).toHaveLength(128);
+    fake.listeners[0]!(payload({ from: '@bob', key: text }));
+    const event = (await events.next()).value;
+    expect(event.key).toEqual({ key: text, sharedBy: '@bob', truncated: true });
+  });
+
+  it('subscribe parses an uncut key of exactly 128 units', async () => {
+    const client = await AtClient.create(opts);
+    const events = client.subscribe()[Symbol.asyncIterator]();
+    const text = 'k'.repeat(128);
+    expect(text).toHaveLength(128);
+    fake.listeners[0]!(payload({ from: '@bob', key: text }));
+    const event = (await events.next()).value;
+    expect(event.key).toEqual({ key: text, noNamespace: true, sharedBy: '@bob' });
+    expect('truncated' in event.key).toBe(false);
+  });
+
+  it('subscribe marks a key cut before a surrogate pair as truncated', async () => {
+    const client = await AtClient.create(opts);
+    const events = client.subscribe()[Symbol.asyncIterator]();
+    const text = `${'k'.repeat(124)}...`;
+    expect(text).toHaveLength(127);
+    fake.listeners[0]!(payload({ from: '@bob', key: text }));
+    const event = (await events.next()).value;
+    expect(event.key).toEqual({ key: text, sharedBy: '@bob', truncated: true });
+  });
+
+  it('an ordinary subscribe event carries no truncated field', async () => {
+    const client = await AtClient.create(opts);
+    const events = client.subscribe()[Symbol.asyncIterator]();
+    fake.listeners[0]!(payload());
+    const event = (await events.next()).value;
+    expect('truncated' in event.key).toBe(false);
   });
 
   it('a subscription that buffers past the cap unsubscribes and rejects with overflow', async () => {
